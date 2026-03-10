@@ -1054,6 +1054,112 @@ function ActiveWorkoutScreen({ session, onUpdate, onEnd, workouts = [] }) {
   )
 }
 
+// ─── LOG TAB ──────────────────────────────────────────────────────────────────
+
+function LogTab({ workouts, savedPlans, aiCycle, onQuickStart, onStartPlan, onStartCycleDay, onBuildPlan, onDeletePlan }) {
+  const now = new Date()
+  const sessionsThisWeek = workouts.filter(w => isWithin7Days(w.startedAt)).length
+
+  let cycleProgress = null
+  if (aiCycle) {
+    const diff = Math.floor((Date.now() - new Date(aiCycle.generatedAt).getTime()) / 86400000)
+    cycleProgress = Math.min(diff, 14)
+  }
+
+  return (
+    <div style={{ padding: '60px 16px 100px' }}>
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ color: COLORS.muted, fontSize: 13, marginBottom: 4 }}>
+          {now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+        </div>
+        <h1 style={{ fontSize: 28, fontWeight: 700, letterSpacing: -0.5 }}>
+          <span style={{ color: COLORS.accent }}>FORGE</span>
+        </h1>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 24 }}>
+        {[
+          { label: 'This Week', value: sessionsThisWeek, unit: 'sessions' },
+          { label: 'All Time', value: workouts.length, unit: 'sessions' },
+          { label: 'Plans', value: savedPlans.length, unit: 'saved' },
+        ].map(({ label, value, unit }) => (
+          <div key={label} style={{ ...S.card, textAlign: 'center' }}>
+            <div style={{ ...S.mono, fontSize: 26, fontWeight: 700, color: COLORS.accent }}>{value}</div>
+            <div style={{ color: COLORS.muted, fontSize: 10, marginTop: 2 }}>{unit}</div>
+            <div style={{ color: COLORS.muted, fontSize: 9, marginTop: 1 }}>{label}</div>
+          </div>
+        ))}
+      </div>
+
+      {aiCycle && cycleProgress !== null && (
+        <div style={{ ...S.card, marginBottom: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 600 }}>{aiCycle.cycleName}</span>
+            <span style={{ ...S.mono, color: COLORS.muted, fontSize: 12 }}>Day {cycleProgress}/14</span>
+          </div>
+          <div style={{ background: COLORS.input, borderRadius: 4, height: 4 }}>
+            <div style={{ height: 4, borderRadius: 4, background: COLORS.accent, width: `${(cycleProgress / 14) * 100}%` }} />
+          </div>
+        </div>
+      )}
+
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>Quick Start</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          {QUICK_START_TYPES.map(type => (
+            <button key={type} onClick={() => onQuickStart(type)} style={{ ...S.card, cursor: 'pointer', textAlign: 'left', padding: '14px 16px' }}>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{type}</div>
+              <div style={{ color: COLORS.muted, fontSize: 11 }}>
+                {QUICK_START_MUSCLES[type].slice(0, 2).join(' · ') || 'Custom'}
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {aiCycle && aiCycle.week1 && (
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>AI Cycle — Week 1</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {aiCycle.week1.slice(0, 4).map((day, idx) => (
+              <div key={idx} style={{ ...S.card, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>{day.dayLabel} — {day.focus}</div>
+                  <div style={{ color: COLORS.muted, fontSize: 11, marginTop: 2 }}>{day.exercises?.length || 0} exercises · {day.estimatedDuration}</div>
+                </div>
+                <Btn variant="accent" onClick={() => onStartCycleDay(day)} style={{ padding: '8px 14px', fontSize: 13 }}>▶</Btn>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {savedPlans.length > 0 && (
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>Saved Plans</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {savedPlans.map(plan => (
+              <div key={plan.id} style={{ ...S.card, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>{plan.name}</div>
+                  <div style={{ color: COLORS.muted, fontSize: 12, marginTop: 2 }}>{plan.exercises.length} exercises</div>
+                </div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <Btn variant="accent" onClick={() => onStartPlan(plan)} style={{ padding: '8px 16px', fontSize: 13 }}>Start</Btn>
+                  <button onClick={() => onDeletePlan(plan.id)}
+                    style={{ background: 'none', border: 'none', color: COLORS.danger, cursor: 'pointer', fontSize: 18 }}>✕</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <Btn onClick={onBuildPlan} style={{ width: '100%' }}>+ Build Plan</Btn>
+    </div>
+  )
+}
+
 export default function App() {
   const [tab, setTab] = useState('log')
   return (
