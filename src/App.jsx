@@ -771,6 +771,289 @@ function SessionPlanSheet({ exercises, currentIdx, onJump, onAddExercise, onEndW
   )
 }
 
+// ─── ACTIVE WORKOUT SCREEN ────────────────────────────────────────────────────
+
+function ActiveWorkoutScreen({ session, onUpdate, onEnd, workouts = [] }) {
+  const [showPlanSheet, setShowPlanSheet] = useState(false)
+  const [restState, setRestState] = useState({ phase: 'idle', secondsLeft: 0, totalSeconds: 0 })
+  const intervalRef = useRef(null)
+  const elapsed = useSessionTimer(true)
+
+  const exercises = session.exercises
+  const exIdx = session.exerciseIndex
+  const ex = exercises[exIdx]
+  const setIdx = ex ? ex.activeSetIndex : 0
+  const currentSet = ex ? ex.sets[setIdx] : null
+
+  function startRestTimer(restSec) {
+    clearInterval(intervalRef.current)
+    let count = 5
+    setRestState({ phase: 'getReady', secondsLeft: 5, totalSeconds: 5 })
+    intervalRef.current = setInterval(() => {
+      count--
+      if (count <= 0) {
+        clearInterval(intervalRef.current)
+        setTimeout(() => startRestPhase(restSec), 50)
+      } else {
+        setRestState(prev => ({ ...prev, secondsLeft: count }))
+      }
+    }, 1000)
+  }
+
+  function startRestPhase(restSec) {
+    clearInterval(intervalRef.current)
+    let count = restSec
+    setRestState({ phase: 'resting', secondsLeft: restSec, totalSeconds: restSec })
+    intervalRef.current = setInterval(() => {
+      count--
+      if (count <= 0) {
+        clearInterval(intervalRef.current)
+        playBeep()
+        setRestState({ phase: 'idle', secondsLeft: 0, totalSeconds: 0 })
+        advanceSet()
+      } else {
+        setRestState(prev => ({ ...prev, secondsLeft: count }))
+      }
+    }, 1000)
+  }
+
+  function skipRest() {
+    clearInterval(intervalRef.current)
+    setRestState({ phase: 'idle', secondsLeft: 0, totalSeconds: 0 })
+    advanceSet()
+  }
+
+  function add30() {
+    setRestState(prev => ({ ...prev, secondsLeft: prev.secondsLeft + 30, totalSeconds: prev.totalSeconds + 30 }))
+  }
+
+  function advanceSet() {
+    if (!ex) return
+    const nextSetIdx = setIdx + 1
+    if (nextSetIdx < ex.sets.length) {
+      onUpdate(exIdx, { activeSetIndex: nextSetIdx })
+    } else {
+      const nextExIdx = exIdx + 1
+      if (nextExIdx < exercises.length) onUpdate(null, null, nextExIdx)
+    }
+  }
+
+  function markSetDone() {
+    if (!currentSet) return
+    const updatedSets = ex.sets.map((s, i) => i === setIdx ? { ...s, done: true } : s)
+    onUpdate(exIdx, { sets: updatedSets })
+    const isLastSet = setIdx === ex.sets.length - 1
+    const isLastExercise = exIdx === exercises.length - 1
+    if (isLastSet && isLastExercise) {
+      clearInterval(intervalRef.current)
+      setRestState({ phase: 'idle', secondsLeft: 0, totalSeconds: 0 })
+      onEnd()
+    } else {
+      startRestTimer(ex.restSec)
+    }
+  }
+
+  function updateCurrentSet(field, value) {
+    if (!currentSet) return
+    const updatedSets = ex.sets.map((s, i) => i === setIdx ? { ...s, [field]: value } : s)
+    onUpdate(exIdx, { sets: updatedSets })
+  }
+
+  function addDropSet() {
+    if (!currentSet) return
+    const updatedSets = ex.sets.map((s, i) =>
+      i === setIdx ? { ...s, dropSets: [...s.dropSets, { id: uuid(), weight: '', reps: '' }] } : s)
+    onUpdate(exIdx, { sets: updatedSets })
+  }
+
+  function updateDropSet(dsIdx, field, value) {
+    if (!currentSet) return
+    const updatedSets = ex.sets.map((s, i) =>
+      i === setIdx ? { ...s, dropSets: s.dropSets.map((ds, j) => j === dsIdx ? { ...ds, [field]: value } : ds) } : s)
+    onUpdate(exIdx, { sets: updatedSets })
+  }
+
+  useEffect(() => () => clearInterval(intervalRef.current), [])
+
+  if (!ex) return null
+
+  const isLastSet = setIdx === ex.sets.length - 1
+  const isLastExercise = exIdx === exercises.length - 1
+
+  return (
+    <>
+      <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: COLORS.bg, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        {/* Top bar */}
+        <div style={{ padding: '52px 16px 16px', borderBottom: `1px solid ${COLORS.border}`, position: 'sticky', top: 0, background: COLORS.bg, zIndex: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ color: COLORS.muted, fontSize: 12, marginBottom: 4 }}>Exercise {exIdx + 1}/{exercises.length}</div>
+              <h2 style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.2 }}>{ex.name}</h2>
+              <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                <Tag>{ex.muscle}</Tag>
+                <Tag color={COLORS.muted}>{formatTime(ex.restSec)} rest</Tag>
+              </div>
+            </div>
+            <div style={{ ...S.mono, fontSize: 15, fontWeight: 700, color: COLORS.accent, paddingTop: 4 }}>{formatMMSS(elapsed)}</div>
+          </div>
+          {/* Set dots */}
+          <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
+            {ex.sets.map((s, i) => (
+              <button key={s.id} onClick={() => onUpdate(exIdx, { activeSetIndex: i })} style={{
+                height: 10, borderRadius: 5, width: i === setIdx ? 24 : 10,
+                background: s.done ? COLORS.success : i === setIdx ? COLORS.accent : COLORS.border,
+                border: 'none', cursor: 'pointer', transition: 'all 0.2s', padding: 0,
+              }} />
+            ))}
+          </div>
+        </div>
+
+        <div style={{ padding: '20px 16px' }}>
+          <div style={{ ...S.mono, fontSize: 12, color: COLORS.muted, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 12 }}>
+            Set {setIdx + 1} of {ex.sets.length}
+          </div>
+
+          {ex.targetWeight && (
+            <div style={{ ...S.card, marginBottom: 14, padding: '10px 14px', borderColor: COLORS.accent + '44', background: COLORS.accent + '08' }}>
+              <span style={{ color: COLORS.muted, fontSize: 11 }}>AI target: </span>
+              <span style={{ ...S.mono, color: COLORS.accent, fontWeight: 700 }}>{ex.targetWeight}</span>
+              <span style={{ color: COLORS.muted, fontSize: 12 }}> · {ex.repsMin}–{ex.repsMax} reps</span>
+            </div>
+          )}
+
+          {setIdx > 0 && ex.sets[setIdx - 1].done && (
+            <div style={{ color: COLORS.muted, fontSize: 12, marginBottom: 12, ...S.mono }}>
+              Prev: {ex.sets[setIdx - 1].weight || '—'}{ex.sets[setIdx - 1].unit} × {ex.sets[setIdx - 1].reps || '—'} reps
+            </div>
+          )}
+
+          {currentSet && (
+            <>
+              {/* Weight × Reps */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ color: COLORS.muted, fontSize: 11, marginBottom: 6 }}>WEIGHT</div>
+                  <input type="number" inputMode="decimal" value={currentSet.weight}
+                    onChange={e => updateCurrentSet('weight', e.target.value)} placeholder="0"
+                    style={{ ...S.input, ...S.mono, fontSize: 32, fontWeight: 700, textAlign: 'center', padding: '12px 8px', color: COLORS.lbs }} />
+                  <button onClick={() => updateCurrentSet('unit', currentSet.unit === 'lbs' ? 'kg' : 'lbs')} style={{
+                    marginTop: 6, background: 'none', border: `1px solid ${COLORS.border}`,
+                    borderRadius: 6, color: COLORS.lbs, cursor: 'pointer', fontSize: 12,
+                    fontWeight: 700, padding: '4px 12px', width: '100%', fontFamily: "'JetBrains Mono', monospace",
+                  }}>{currentSet.unit}</button>
+                </div>
+                <div style={{ color: COLORS.muted, fontSize: 24, fontWeight: 300 }}>×</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ color: COLORS.muted, fontSize: 11, marginBottom: 6 }}>REPS</div>
+                  <input type="number" inputMode="numeric" value={currentSet.reps}
+                    onChange={e => updateCurrentSet('reps', e.target.value)} placeholder="0"
+                    style={{ ...S.input, ...S.mono, fontSize: 32, fontWeight: 700, textAlign: 'center', padding: '12px 8px' }} />
+                  <div style={{ marginTop: 6, height: 28 }} />
+                </div>
+              </div>
+
+              {/* RPE */}
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ color: COLORS.muted, fontSize: 11, marginBottom: 8 }}>RPE</div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {[6, 7, 8, 9, 10].map(rpe => (
+                    <button key={rpe} onClick={() => updateCurrentSet('rpe', currentSet.rpe === rpe ? null : rpe)} style={{
+                      flex: 1, padding: '8px 0', borderRadius: 8,
+                      border: `1px solid ${currentSet.rpe === rpe ? COLORS.accent : COLORS.border}`,
+                      background: currentSet.rpe === rpe ? COLORS.accent + '22' : COLORS.input,
+                      color: currentSet.rpe === rpe ? COLORS.accent : COLORS.muted,
+                      cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace",
+                    }}>{rpe}</button>
+                  ))}
+                </div>
+                {currentSet.rpe && (
+                  <div style={{ color: COLORS.accent, fontSize: 12, marginTop: 6, textAlign: 'center' }}>{RPE_LABELS[currentSet.rpe]}</div>
+                )}
+              </div>
+
+              {/* Drop sets */}
+              {currentSet.dropSets.length > 0 && (
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ color: COLORS.muted, fontSize: 11, marginBottom: 8 }}>DROP SETS</div>
+                  {currentSet.dropSets.map((ds, dsIdx) => (
+                    <div key={ds.id} style={{ display: 'flex', gap: 8, marginBottom: 8, paddingLeft: 16, alignItems: 'center' }}>
+                      <span style={{ color: COLORS.muted, fontSize: 12 }}>↓</span>
+                      <input type="number" inputMode="decimal" value={ds.weight}
+                        onChange={e => updateDropSet(dsIdx, 'weight', e.target.value)} placeholder="wt"
+                        style={{ ...S.input, ...S.mono, flex: 1, padding: '8px', textAlign: 'center', color: COLORS.lbs }} />
+                      <span style={{ color: COLORS.muted }}>×</span>
+                      <input type="number" inputMode="numeric" value={ds.reps}
+                        onChange={e => updateDropSet(dsIdx, 'reps', e.target.value)} placeholder="reps"
+                        style={{ ...S.input, ...S.mono, flex: 1, padding: '8px', textAlign: 'center' }} />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {currentSet.showNote && (
+                <textarea value={currentSet.note} onChange={e => updateCurrentSet('note', e.target.value)}
+                  placeholder="Set note..." rows={2}
+                  style={{ ...S.input, resize: 'none', marginBottom: 14 }} />
+              )}
+
+              {/* Secondary buttons */}
+              <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+                {[
+                  { label: '+ Note', action: () => updateCurrentSet('showNote', !currentSet.showNote) },
+                  { label: '+ Drop Set', action: addDropSet },
+                  { label: '+ Set', action: () => {
+                    const newSet = { id: uuid(), weight: currentSet.weight || '', unit: currentSet.unit || 'lbs', reps: '', rpe: null, note: '', dropSets: [], done: false, showNote: false }
+                    onUpdate(exIdx, { sets: [...ex.sets, newSet] })
+                  }},
+                ].map(({ label, action }) => (
+                  <button key={label} onClick={action} style={{
+                    padding: '8px 14px', borderRadius: 8, border: `1px solid ${COLORS.border}`,
+                    background: COLORS.input, color: COLORS.muted, cursor: 'pointer',
+                    fontSize: 13, fontWeight: 600, fontFamily: "'Sora', sans-serif",
+                  }}>{label}</button>
+                ))}
+              </div>
+            </>
+          )}
+
+          <Btn variant="accent" onClick={markSetDone} style={{ width: '100%', padding: '18px', fontSize: 17, marginBottom: 10 }}>
+            {isLastSet && isLastExercise ? '✓ Finish Workout' : isLastSet ? '✓ Done — Next Exercise →' : '✓ Set Done'}
+          </Btn>
+
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Btn onClick={advanceSet} style={{ flex: 1 }}>Skip Set</Btn>
+            {!isLastExercise && <Btn onClick={() => onUpdate(null, null, exIdx + 1)} style={{ flex: 1 }}>Next Exercise →</Btn>}
+            <Btn variant="danger" onClick={onEnd} style={{ flex: 1 }}>End</Btn>
+          </div>
+        </div>
+
+        <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 110 }}>
+          <button onClick={() => setShowPlanSheet(true)} style={{
+            background: COLORS.card, border: `1px solid ${COLORS.border}`,
+            borderRadius: 24, padding: '10px 20px', color: COLORS.text, cursor: 'pointer',
+            fontFamily: "'Sora', sans-serif", fontSize: 13, fontWeight: 600,
+            boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+          }}>
+            {exIdx + 1}/{exercises.length} exercises ≡
+          </button>
+        </div>
+      </div>
+
+      {restState.phase !== 'idle' && (
+        <RestTimerOverlay phase={restState.phase} secondsLeft={restState.secondsLeft}
+          totalSeconds={restState.totalSeconds} onSkip={skipRest} onAdd30={add30} />
+      )}
+
+      {showPlanSheet && (
+        <SessionPlanSheet exercises={exercises} currentIdx={exIdx}
+          onJump={idx => onUpdate(null, null, idx)}
+          onAddExercise={ex => onUpdate(null, null, null, ex)}
+          onEndWorkout={onEnd} onClose={() => setShowPlanSheet(false)} workouts={workouts} />
+      )}
+    </>
+  )
+}
+
 export default function App() {
   const [tab, setTab] = useState('log')
   return (
