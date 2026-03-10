@@ -362,6 +362,99 @@ function useSessionTimer(active) {
   return elapsed
 }
 
+// ─── STYLES ───────────────────────────────────────────────────────────────────
+
+const S = {
+  app: {
+    fontFamily: "'Sora', sans-serif",
+    background: COLORS.bg,
+    color: COLORS.text,
+    minHeight: '100dvh',
+    maxWidth: 480,
+    margin: '0 auto',
+    position: 'relative',
+    overflowX: 'hidden',
+  },
+  mono: { fontFamily: "'JetBrains Mono', monospace" },
+  card: {
+    background: COLORS.card,
+    border: `1px solid ${COLORS.border}`,
+    borderRadius: 12,
+    padding: '14px 16px',
+  },
+  btn: {
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+    padding: '12px 20px', borderRadius: 10, border: 'none', cursor: 'pointer',
+    fontFamily: "'Sora', sans-serif", fontWeight: 600, fontSize: 15,
+    transition: 'opacity 0.15s',
+  },
+  btnAccent: { background: COLORS.accent, color: '#000' },
+  btnGhost: { background: COLORS.card, color: COLORS.text, border: `1px solid ${COLORS.border}` },
+  btnDanger: { background: 'transparent', color: COLORS.danger, border: `1px solid ${COLORS.danger}` },
+  input: {
+    background: COLORS.input, border: `1px solid ${COLORS.border}`, borderRadius: 8,
+    color: COLORS.text, padding: '10px 14px', fontSize: 15, width: '100%',
+    outline: 'none', fontFamily: "'Sora', sans-serif",
+  },
+  tag: {
+    display: 'inline-flex', alignItems: 'center', padding: '3px 10px', borderRadius: 20,
+    fontSize: 11, fontWeight: 600, background: COLORS.input,
+    color: COLORS.muted, border: `1px solid ${COLORS.border}`,
+  },
+}
+
+// ─── SHARED COMPONENTS ────────────────────────────────────────────────────────
+
+function Tag({ children, color }) {
+  return (
+    <span style={{
+      ...S.tag,
+      color: color || COLORS.muted,
+      border: `1px solid ${color ? color + '33' : COLORS.border}`,
+    }}>{children}</span>
+  )
+}
+
+function Btn({ children, onClick, style, variant = 'ghost', disabled }) {
+  const base = {
+    ...S.btn,
+    ...(variant === 'accent' ? S.btnAccent : variant === 'danger' ? S.btnDanger : S.btnGhost),
+  }
+  return (
+    <button onClick={onClick} disabled={disabled} style={{ ...base, ...style, opacity: disabled ? 0.5 : 1 }}>
+      {children}
+    </button>
+  )
+}
+
+function BottomSheet({ title, onClose, children, height = '85vh' }) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.7)' }} />
+      <div style={{
+        position: 'relative', background: COLORS.card,
+        borderRadius: '20px 20px 0 0', border: `1px solid ${COLORS.border}`,
+        height, display: 'flex', flexDirection: 'column', overflow: 'hidden',
+      }}>
+        <div style={{
+          padding: '16px 20px 14px', borderBottom: `1px solid ${COLORS.border}`,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0,
+        }}>
+          <span style={{ fontWeight: 700, fontSize: 17 }}>{title}</span>
+          <button onClick={onClose} style={{
+            background: COLORS.input, border: `1px solid ${COLORS.border}`,
+            color: COLORS.muted, borderRadius: 8, padding: '4px 12px',
+            cursor: 'pointer', fontFamily: "'Sora', sans-serif", fontSize: 13,
+          }}>✕</button>
+        </div>
+        <div style={{ overflowY: 'auto', flex: 1, WebkitOverflowScrolling: 'touch' }}>
+          {children}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
   return <div style={{ background: COLORS.bg, minHeight: '100dvh', color: COLORS.text, fontFamily: 'Sora, sans-serif', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>FORGE</div>
 }
