@@ -318,14 +318,32 @@ function buildCyclePrompt(workouts) {
 Recent history:
 ${historyText || 'No previous sessions'}
 
-Return ONLY valid JSON (no markdown, no explanation):
+Return ONLY valid JSON with no markdown fences, no comments, no explanation. Use this exact structure:
 {
   "cycleName": "string",
   "split": "string",
   "progressionRules": "string",
   "coachNote": "string",
-  "week1": [{"dayLabel":"Day 1","focus":"string","estimatedDuration":"60 min","exercises":[{"name":"string","muscle":"string","sets":4,"repsMin":8,"repsMax":12,"restSec":90,"targetWeight":"string","note":"string"}]}],
-  "week2": [/* same structure, slightly higher weights/volume */]
+  "week1": [
+    {
+      "dayLabel": "Day 1",
+      "focus": "string",
+      "estimatedDuration": "60 min",
+      "exercises": [
+        {"name":"string","muscle":"string","sets":4,"repsMin":8,"repsMax":12,"restSec":90,"targetWeight":"string","note":"string"}
+      ]
+    }
+  ],
+  "week2": [
+    {
+      "dayLabel": "Day 1",
+      "focus": "string",
+      "estimatedDuration": "60 min",
+      "exercises": [
+        {"name":"string","muscle":"string","sets":4,"repsMin":8,"repsMax":12,"restSec":90,"targetWeight":"string","note":"string"}
+      ]
+    }
+  ]
 }`
 }
 
@@ -367,7 +385,13 @@ function useSessionTimer(active) {
 const S = {
   app: {
     fontFamily: "'Sora', sans-serif",
-    background: COLORS.bg,
+    background: '#080809',
+    backgroundImage: [
+      'linear-gradient(rgba(212,240,0,0.028) 1px, transparent 1px)',
+      'linear-gradient(90deg, rgba(212,240,0,0.028) 1px, transparent 1px)',
+      'linear-gradient(160deg, #0d0b18 0%, #080809 50%, #090e08 100%)',
+    ].join(', '),
+    backgroundSize: '40px 40px, 40px 40px, 100% 100%',
     color: COLORS.text,
     minHeight: '100dvh',
     maxWidth: 480,
@@ -1108,7 +1132,7 @@ function LogTab({ workouts, savedPlans, aiCycle, onQuickStart, onStartPlan, onSt
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           {QUICK_START_TYPES.map(type => (
             <button key={type} onClick={() => onQuickStart(type)} style={{ ...S.card, cursor: 'pointer', textAlign: 'left', padding: '14px 16px' }}>
-              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{type}</div>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4, color: COLORS.accent }}>{type}</div>
               <div style={{ color: COLORS.muted, fontSize: 11 }}>
                 {QUICK_START_MUSCLES[type].slice(0, 2).join(' · ') || 'Custom'}
               </div>
@@ -1174,7 +1198,7 @@ function PlanTab({ aiCycle, workouts, apiKey, onSetApiKey, onCycleGenerated }) {
     if (!key) { setError('Enter your Anthropic API key first.'); return }
     setLoading(true); setError(null)
     try {
-      const text = await callAnthropic(key, [{ role: 'user', content: buildCyclePrompt(workouts) }], 2000)
+      const text = await callAnthropic(key, [{ role: 'user', content: buildCyclePrompt(workouts) }], 4000)
       const cycle = parseCycleResponse(text)
       if (!cycle) throw new Error('Failed to parse AI response. Try again.')
       onCycleGenerated({ ...cycle, generatedAt: new Date().toISOString() })
