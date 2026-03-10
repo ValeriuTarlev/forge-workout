@@ -676,6 +676,101 @@ function SessionSetupScreen({ sessionName, initialExercises, onStart, onCancel, 
   )
 }
 
+// ─── REST TIMER OVERLAY ───────────────────────────────────────────────────────
+
+const RING_RADIUS = 54
+const RING_CIRC = 2 * Math.PI * RING_RADIUS
+
+function RestTimerOverlay({ phase, secondsLeft, totalSeconds, onSkip, onAdd30 }) {
+  const progress = totalSeconds > 0 ? secondsLeft / totalSeconds : 1
+  const offset = RING_CIRC * (1 - progress)
+  const ringColor = progress > 0.5 ? COLORS.success : progress > 0.25 ? '#ffcc00' : COLORS.danger
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 300,
+      background: 'rgba(8,8,9,0.97)',
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 32,
+    }}>
+      <div style={{ color: COLORS.muted, fontSize: 13, fontWeight: 600, letterSpacing: 2, textTransform: 'uppercase' }}>
+        {phase === 'getReady' ? 'GET READY' : 'REST'}
+      </div>
+      <div style={{ position: 'relative', width: 140, height: 140 }}>
+        {phase === 'resting' ? (
+          <>
+            <svg width="140" height="140" style={{ transform: 'rotate(-90deg)' }}>
+              <circle cx="70" cy="70" r={RING_RADIUS} fill="none" stroke={COLORS.border} strokeWidth="8" />
+              <circle cx="70" cy="70" r={RING_RADIUS} fill="none" stroke={ringColor} strokeWidth="8"
+                strokeDasharray={RING_CIRC} strokeDashoffset={offset} strokeLinecap="round"
+                style={{ transition: 'stroke-dashoffset 1s linear, stroke 0.5s' }} />
+            </svg>
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ ...S.mono, fontSize: 36, fontWeight: 700 }}>{formatTime(secondsLeft)}</span>
+            </div>
+          </>
+        ) : (
+          <div style={{
+            width: 140, height: 140, borderRadius: '50%',
+            border: `4px solid ${COLORS.accent}`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <span style={{ ...S.mono, fontSize: 64, fontWeight: 700, color: COLORS.accent }}>{secondsLeft}</span>
+          </div>
+        )}
+      </div>
+      {phase === 'resting' && (
+        <div style={{ display: 'flex', gap: 12 }}>
+          <Btn onClick={onSkip} style={{ padding: '12px 24px' }}>Skip Rest →</Btn>
+          <Btn onClick={onAdd30} style={{ padding: '12px 24px' }}>+30s</Btn>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── SESSION PLAN SHEET ───────────────────────────────────────────────────────
+
+function SessionPlanSheet({ exercises, currentIdx, onJump, onAddExercise, onEndWorkout, onClose, workouts = [] }) {
+  const [showPicker, setShowPicker] = useState(false)
+
+  if (showPicker) return (
+    <ExercisePickerSheet
+      onPick={e => { onAddExercise(makeExercise(e, workouts)); setShowPicker(false) }}
+      onClose={() => setShowPicker(false)}
+    />
+  )
+
+  return (
+    <BottomSheet title="Session Plan" onClose={onClose}>
+      <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {exercises.map((ex, idx) => {
+          const doneSets = ex.sets.filter(s => s.done).length
+          const isCurrent = idx === currentIdx
+          return (
+            <button key={ex.id} onClick={() => { onJump(idx); onClose() }} style={{
+              ...S.card, border: `1px solid ${isCurrent ? COLORS.accent : COLORS.border}`,
+              background: isCurrent ? COLORS.accent + '11' : COLORS.card,
+              cursor: 'pointer', textAlign: 'left', width: '100%',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            }}>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 14, color: isCurrent ? COLORS.accent : COLORS.text }}>
+                  {idx + 1}. {ex.name}
+                </div>
+                <div style={{ color: COLORS.muted, fontSize: 12, marginTop: 2 }}>{doneSets}/{ex.sets.length} sets done</div>
+              </div>
+              {doneSets === ex.sets.length && <span style={{ color: COLORS.success, fontSize: 18 }}>✓</span>}
+            </button>
+          )
+        })}
+        <Btn onClick={() => setShowPicker(true)} style={{ width: '100%', marginTop: 4 }}>+ Add Exercise</Btn>
+        <Btn variant="danger" onClick={onEndWorkout} style={{ width: '100%' }}>End Workout</Btn>
+        <div style={{ height: 20 }} />
+      </div>
+    </BottomSheet>
+  )
+}
+
 export default function App() {
   const [tab, setTab] = useState('log')
   return (
