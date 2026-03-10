@@ -455,6 +455,111 @@ function BottomSheet({ title, onClose, children, height = '85vh' }) {
   )
 }
 
+// ─── BOTTOM NAV ───────────────────────────────────────────────────────────────
+
+function BottomNav({ tab, setTab }) {
+  const tabs = [
+    { id: 'log', label: 'Log', icon: '🏋' },
+    { id: 'plan', label: 'Plan', icon: '📋' },
+    { id: 'coach', label: 'Coach', icon: '🧠' },
+    { id: 'history', label: 'History', icon: '📈' },
+  ]
+  return (
+    <div style={{
+      position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)',
+      width: '100%', maxWidth: 480, background: COLORS.card,
+      borderTop: `1px solid ${COLORS.border}`, display: 'flex', zIndex: 100,
+      paddingBottom: 'env(safe-area-inset-bottom)',
+    }}>
+      {tabs.map(t => (
+        <button key={t.id} onClick={() => setTab(t.id)} style={{
+          flex: 1, padding: '10px 0 8px', background: 'none', border: 'none',
+          cursor: 'pointer', display: 'flex', flexDirection: 'column',
+          alignItems: 'center', gap: 3,
+          color: tab === t.id ? COLORS.accent : COLORS.muted,
+          fontFamily: "'Sora', sans-serif", fontSize: 10, fontWeight: 600,
+        }}>
+          <span style={{ fontSize: 20 }}>{t.icon}</span>
+          <span>{t.label}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// ─── EXERCISE PICKER ──────────────────────────────────────────────────────────
+
+function ExercisePickerSheet({ onPick, onClose }) {
+  const [query, setQuery] = useState('')
+  const [muscleFilter, setMuscleFilter] = useState('All')
+  const [customName, setCustomName] = useState('')
+
+  const filtered = ALL_EXERCISES.filter(e => {
+    const matchMuscle = muscleFilter === 'All' || e.muscle === muscleFilter
+    const matchQuery = e.name.toLowerCase().includes(query.toLowerCase())
+    return matchMuscle && matchQuery
+  })
+
+  return (
+    <BottomSheet title="Add Exercise" onClose={onClose} height="90vh">
+      <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <input style={S.input} placeholder="Search exercises..." value={query}
+          onChange={e => setQuery(e.target.value)} autoFocus />
+        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
+          {['All', ...MUSCLES].map(m => (
+            <button key={m} onClick={() => setMuscleFilter(m)} style={{
+              flexShrink: 0, padding: '6px 14px', borderRadius: 20,
+              border: `1px solid ${muscleFilter === m ? COLORS.accent : COLORS.border}`,
+              background: muscleFilter === m ? COLORS.accent + '22' : COLORS.input,
+              color: muscleFilter === m ? COLORS.accent : COLORS.muted,
+              cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: "'Sora', sans-serif",
+            }}>{m}</button>
+          ))}
+        </div>
+        {filtered.map(e => (
+          <button key={e.name + e.muscle} onClick={() => onPick(e)} style={{
+            background: COLORS.input, border: `1px solid ${COLORS.border}`,
+            borderRadius: 10, padding: '12px 14px', cursor: 'pointer',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left',
+          }}>
+            <div>
+              <div style={{ color: COLORS.text, fontWeight: 600, fontSize: 14 }}>{e.name}</div>
+              <div style={{ color: COLORS.muted, fontSize: 12, marginTop: 2 }}>{e.muscle}</div>
+            </div>
+            <span style={{ color: COLORS.accent, fontSize: 18 }}>+</span>
+          </button>
+        ))}
+        <div style={{ borderTop: `1px solid ${COLORS.border}`, paddingTop: 12 }}>
+          <div style={{ color: COLORS.muted, fontSize: 12, marginBottom: 8 }}>Custom exercise</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input style={S.input} placeholder="Exercise name..." value={customName}
+              onChange={e => setCustomName(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && customName.trim()) {
+                  onPick({ name: customName.trim(), muscle: 'Other' })
+                  setCustomName('')
+                }
+              }} />
+            <Btn variant="accent" style={{ flexShrink: 0, padding: '10px 16px' }}
+              onClick={() => {
+                if (customName.trim()) { onPick({ name: customName.trim(), muscle: 'Other' }); setCustomName('') }
+              }}>+</Btn>
+          </div>
+        </div>
+        <div style={{ height: 20 }} />
+      </div>
+    </BottomSheet>
+  )
+}
+
 export default function App() {
-  return <div style={{ background: COLORS.bg, minHeight: '100dvh', color: COLORS.text, fontFamily: 'Sora, sans-serif', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>FORGE</div>
+  const [tab, setTab] = useState('log')
+  return (
+    <div style={S.app}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '80dvh' }}>
+        <span style={{ color: COLORS.accent, fontSize: 32, fontWeight: 700 }}>FORGE</span>
+      </div>
+      <BottomNav tab={tab} setTab={setTab} />
+    </div>
+  )
 }
