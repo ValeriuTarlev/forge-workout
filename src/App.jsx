@@ -552,6 +552,130 @@ function ExercisePickerSheet({ onPick, onClose }) {
   )
 }
 
+// ─── PLAN BUILDER SHEET ───────────────────────────────────────────────────────
+
+function PlanBuilderSheet({ onSave, onClose }) {
+  const [name, setName] = useState('')
+  const [exercises, setExercises] = useState([])
+  const [showPicker, setShowPicker] = useState(false)
+
+  if (showPicker) return (
+    <ExercisePickerSheet
+      onPick={e => { setExercises(prev => [...prev, { ...e, sets: 3, repsMin: 8, repsMax: 12, restSec: 90 }]); setShowPicker(false) }}
+      onClose={() => setShowPicker(false)}
+    />
+  )
+
+  return (
+    <BottomSheet title="Build Plan" onClose={onClose} height="90vh">
+      <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <input style={S.input} placeholder="Plan name..." value={name} onChange={e => setName(e.target.value)} />
+
+        {exercises.map((ex, idx) => (
+          <div key={idx} style={S.card}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 14 }}>{ex.name}</div>
+                <div style={{ color: COLORS.muted, fontSize: 12 }}>{ex.muscle}</div>
+              </div>
+              <button onClick={() => setExercises(prev => prev.filter((_, i) => i !== idx))}
+                style={{ background: 'none', border: 'none', color: COLORS.danger, cursor: 'pointer', fontSize: 18 }}>✕</button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 10 }}>
+              {[
+                { label: 'Sets', field: 'sets' },
+                { label: 'Min reps', field: 'repsMin' },
+                { label: 'Max reps', field: 'repsMax' },
+              ].map(({ label, field }) => (
+                <div key={field}>
+                  <div style={{ color: COLORS.muted, fontSize: 10, marginBottom: 4 }}>{label}</div>
+                  <input type="number" value={ex[field]}
+                    onChange={e => setExercises(prev => prev.map((x, i) => i === idx ? { ...x, [field]: parseInt(e.target.value) || 0 } : x))}
+                    style={{ ...S.input, ...S.mono, textAlign: 'center', padding: '8px 4px' }} />
+                </div>
+              ))}
+            </div>
+            <div>
+              <div style={{ color: COLORS.muted, fontSize: 10, marginBottom: 6 }}>Rest time</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {REST_CHIPS.map(c => (
+                  <button key={c.sec} onClick={() => setExercises(prev => prev.map((x, i) => i === idx ? { ...x, restSec: c.sec } : x))} style={{
+                    padding: '5px 12px', borderRadius: 20,
+                    border: `1px solid ${ex.restSec === c.sec ? COLORS.accent : COLORS.border}`,
+                    background: ex.restSec === c.sec ? COLORS.accent + '22' : COLORS.input,
+                    color: ex.restSec === c.sec ? COLORS.accent : COLORS.muted,
+                    cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: "'Sora', sans-serif",
+                  }}>{c.label}</button>
+                ))}
+              </div>
+            </div>
+          </div>
+        ))}
+
+        <Btn onClick={() => setShowPicker(true)} style={{ width: '100%' }}>+ Add Exercise</Btn>
+        <Btn variant="accent" disabled={!name.trim() || exercises.length === 0} style={{ width: '100%' }}
+          onClick={() => { if (name.trim() && exercises.length) onSave({ id: uuid(), name: name.trim(), exercises }) }}>
+          Save Plan
+        </Btn>
+        <div style={{ height: 20 }} />
+      </div>
+    </BottomSheet>
+  )
+}
+
+// ─── SESSION SETUP SCREEN ─────────────────────────────────────────────────────
+
+function SessionSetupScreen({ sessionName, initialExercises, onStart, onCancel, workouts = [] }) {
+  const [exercises, setExercises] = useState(initialExercises)
+  const [showPicker, setShowPicker] = useState(false)
+
+  if (showPicker) return (
+    <ExercisePickerSheet
+      onPick={e => { setExercises(prev => [...prev, makeExercise(e, workouts)]); setShowPicker(false) }}
+      onClose={() => setShowPicker(false)}
+    />
+  )
+
+  return (
+    <div style={{ ...S.app, paddingBottom: 20 }}>
+      <div style={{ padding: '60px 16px 16px' }}>
+        <button onClick={onCancel} style={{
+          background: 'none', border: 'none', color: COLORS.muted,
+          cursor: 'pointer', fontSize: 14, marginBottom: 16, fontFamily: "'Sora', sans-serif",
+        }}>← Back</button>
+        <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 4 }}>{sessionName}</h1>
+        <p style={{ color: COLORS.muted, fontSize: 14, marginBottom: 20 }}>
+          {exercises.length} exercise{exercises.length !== 1 ? 's' : ''} queued
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+          {exercises.map(ex => (
+            <div key={ex.id} style={{ ...S.card, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>{ex.name}</div>
+                <div style={{ color: COLORS.muted, fontSize: 12, marginTop: 2 }}>
+                  <span style={S.mono}>{ex.sets.length}</span> sets ·{' '}
+                  <span style={S.mono}>{ex.repsMin}–{ex.repsMax}</span> reps ·{' '}
+                  <span style={S.mono}>{formatTime(ex.restSec)}</span> rest
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <Tag>{ex.muscle}</Tag>
+                <button onClick={() => setExercises(prev => prev.filter(e => e.id !== ex.id))}
+                  style={{ background: 'none', border: 'none', color: COLORS.danger, cursor: 'pointer', fontSize: 18 }}>✕</button>
+              </div>
+            </div>
+          ))}
+        </div>
+        <Btn onClick={() => setShowPicker(true)} style={{ width: '100%', marginBottom: 10 }}>+ Add Exercise</Btn>
+        <Btn variant="accent" disabled={exercises.length === 0} onClick={() => onStart(exercises)}
+          style={{ width: '100%', padding: '16px 20px', fontSize: 17 }}>
+          ▶ Start Workout
+        </Btn>
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
   const [tab, setTab] = useState('log')
   return (
