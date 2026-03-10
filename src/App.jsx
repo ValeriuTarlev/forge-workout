@@ -214,6 +214,154 @@ function saveForge(data) {
   } catch (_) {}
 }
 
+// ─── API ──────────────────────────────────────────────────────────────────────
+
+async function callAnthropic(apiKey, messages, maxTokens, systemPrompt) {
+  const body = { model: 'claude-sonnet-4-20250514', max_tokens: maxTokens, messages }
+  if (systemPrompt) body.system = systemPrompt
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify(body),
+  })
+
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`API error ${res.status}: ${err}`)
+  }
+
+  const data = await res.json()
+  return data.content[0].text
+}
+
+function buildCoachSystemPrompt(workouts, aiCycle) {
+  const last15 = workouts.slice(0, 15)
+  const last14Days = workouts.filter(w => isWithin14Days(w.startedAt))
+
+  const volumeMap = {}
+  last14Days.forEach(w => {
+    w.exercises.forEach(ex => {
+      volumeMap[ex.muscle] = (volumeMap[ex.muscle] || 0) + ex.sets.length
+    })
+  })
+
+  const exerciseMap = {}
+  last15.forEach(w => {
+    w.exercises.forEach(ex => {
+      if (!exerciseMap[ex.name]) exerciseMap[ex.name] = { muscle: ex.muscle, sessions: [] }
+      const topSet = ex.sets.reduce((best, s) => {
+        const v = parseFloat(s.weight) || 0
+        return v > (parseFloat(best.weight) || 0) ? s : best
+      }, ex.sets[0] || {})
+      exerciseMap[ex.name].sessions.push({
+        topWeight: parseFloat(topSet.weight) || 0,
+        topReps: parseInt(topSet.reps) || 0,
+        unit: topSet.unit || 'lbs',
+      })
+    })
+  })
+
+  const exerciseLines = Object.entries(exerciseMap).map(([name, data]) => {
+    const s = data.sessions
+    const latest = s[0]
+    const prev = s[1]
+    let status = 'first session'
+    if (prev) {
+      if (latest.topWeight > prev.topWeight) status = 'progressing'
+      else if (latest.topWeight < prev.topWeight) status = 'regressed'
+      else status = 'stalled'
+    }
+    return `  - ${name} (${data.muscle}): ${latest.topWeight}${latest.unit} x ${latest.topReps} reps — ${status}`
+  }).join('\n')
+
+  const volumeLines = MUSCLES.map(m => {
+    const sets = volumeMap[m] || 0
+    let flag = ''
+    if (sets > 20) flag = ' ⚠️ OVERTRAINED'
+    if (sets === 0) flag = ' ⚠️ UNDERTRAINED'
+    return `  - ${m}: ${sets} sets${flag}`
+  }).join('\n')
+
+  return `You are FORGE, an elite AI strength coach. Direct, data-driven, personalized.
+
+USER PROFILE:
+- Goal: Muscle Gain | Equipment: Full Gym | Frequency: 4 days/week | Default unit: lbs
+- Total sessions: ${workouts.length}
+- Active AI cycle: ${aiCycle ? aiCycle.cycleName : 'None'}
+
+RECENT PERFORMANCE (last 15 sessions):
+${exerciseLines || '  No data yet'}
+
+MUSCLE VOLUME (last 14 days):
+${volumeLines}
+
+RULES: Suggest specific weights using progressive overload. Warn about overtraining (>20 sets/14d) or undertraining (0 sets/14d). Be concise and use numbers.`
+}
+
+function buildCyclePrompt(workouts) {
+  const last10 = workouts.slice(0, 10)
+  const historyText = last10.map(w =>
+    `${formatDate(w.startedAt)} — ${w.name}: ${w.exercises.map(e =>
+      `${e.name} ${e.sets.map(s => `${s.weight}${s.unit}x${s.reps}`).join(', ')}`
+    ).join(' | ')}`
+  ).join('\n')
+
+  return `Generate a personalized 2-week training cycle:
+- Goal: Muscle Gain | Equipment: Full gym | Frequency: 4 days/week
+
+Recent history:
+${historyText || 'No previous sessions'}
+
+Return ONLY valid JSON (no markdown, no explanation):
+{
+  "cycleName": "string",
+  "split": "string",
+  "progressionRules": "string",
+  "coachNote": "string",
+  "week1": [{"dayLabel":"Day 1","focus":"string","estimatedDuration":"60 min","exercises":[{"name":"string","muscle":"string","sets":4,"repsMin":8,"repsMax":12,"restSec":90,"targetWeight":"string","note":"string"}]}],
+  "week2": [/* same structure, slightly higher weights/volume */]
+}`
+}
+
+function parseCycleResponse(text) {
+  try {
+    const clean = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+    return JSON.parse(clean)
+  } catch (_) {
+    return null
+  }
+}
+
+// ─── HOOKS ────────────────────────────────────────────────────────────────────
+
+function useSessionTimer(active) {
+  const [elapsed, setElapsed] = useState(0)
+  const startRef = useRef(null)
+  const rafRef = useRef(null)
+
+  useEffect(() => {
+    if (active) {
+      startRef.current = Date.now() - elapsed
+      const tick = () => {
+        setElapsed(Date.now() - startRef.current)
+        rafRef.current = requestAnimationFrame(tick)
+      }
+      rafRef.current = requestAnimationFrame(tick)
+    } else {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current)
+    }
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current) }
+  }, [active])
+
+  return elapsed
+}
+
 export default function App() {
   return <div style={{ background: COLORS.bg, minHeight: '100dvh', color: COLORS.text, fontFamily: 'Sora, sans-serif', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>FORGE</div>
 }
