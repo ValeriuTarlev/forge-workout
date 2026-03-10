@@ -94,6 +94,126 @@ const REST_CHIPS = [
 
 const RPE_LABELS = { 6: 'Easy', 7: 'Moderate', 8: 'Hard', 9: 'Very Hard', 10: 'Max' }
 
+// ─── HELPERS & UTILS ──────────────────────────────────────────────────────────
+
+function uuid() {
+  return Math.random().toString(36).slice(2) + Date.now().toString(36)
+}
+
+function formatDate(iso) {
+  const d = new Date(iso)
+  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+}
+
+function formatDuration(ms) {
+  const min = Math.floor(ms / 60000)
+  const sec = Math.floor((ms % 60000) / 1000)
+  return `${min}m ${sec}s`
+}
+
+function formatTime(sec) {
+  const m = Math.floor(sec / 60)
+  const s = sec % 60
+  return `${m}:${String(s).padStart(2, '0')}`
+}
+
+function formatMMSS(ms) {
+  const totalSec = Math.floor(ms / 1000)
+  const m = Math.floor(totalSec / 60)
+  const s = totalSec % 60
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
+function isWithin7Days(iso) {
+  return Date.now() - new Date(iso).getTime() < 7 * 24 * 60 * 60 * 1000
+}
+
+function isWithin14Days(iso) {
+  return Date.now() - new Date(iso).getTime() < 14 * 24 * 60 * 60 * 1000
+}
+
+function totalVolume(session) {
+  return session.exercises.reduce((total, ex) =>
+    total + ex.sets.reduce((s, set) => s + (parseFloat(set.weight) || 0) * (parseInt(set.reps) || 0), 0), 0)
+}
+
+function sessionMuscles(session) {
+  return [...new Set(session.exercises.map(e => e.muscle))]
+}
+
+function playBeep() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)()
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.frequency.value = 880
+    gain.gain.setValueAtTime(0.3, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5)
+    osc.start(ctx.currentTime)
+    osc.stop(ctx.currentTime + 0.5)
+  } catch (_) {}
+}
+
+function getLastSetData(workouts, exerciseName) {
+  for (const w of workouts) {
+    for (const ex of w.exercises) {
+      if (ex.name.toLowerCase() === exerciseName.toLowerCase()) {
+        const withWeight = ex.sets.filter(s => s.weight && s.weight !== '')
+        if (withWeight.length > 0) {
+          const last = withWeight[withWeight.length - 1]
+          return { weight: last.weight, unit: last.unit || 'lbs' }
+        }
+      }
+    }
+  }
+  return null
+}
+
+function makeExercise(template, workouts = []) {
+  const sets = template.sets || 3
+  const lastData = getLastSetData(workouts, template.name)
+  return {
+    id: uuid(),
+    name: template.name,
+    muscle: template.muscle || 'Other',
+    restSec: template.restSec || 90,
+    repsMin: template.repsMin || 8,
+    repsMax: template.repsMax || 12,
+    targetWeight: template.targetWeight || null,
+    note: template.note || '',
+    activeSetIndex: 0,
+    sets: Array.from({ length: sets }, () => ({
+      id: uuid(),
+      weight: lastData ? lastData.weight : '',
+      unit: lastData ? lastData.unit : 'lbs',
+      reps: '',
+      rpe: null,
+      note: '',
+      dropSets: [],
+      done: false,
+      showNote: false,
+    })),
+  }
+}
+
+// ─── STORAGE ──────────────────────────────────────────────────────────────────
+
+function loadForge() {
+  try {
+    const raw = window.__forge__
+    if (raw) return JSON.parse(raw)
+  } catch (_) {}
+  return { workouts: [], savedPlans: [], aiCycle: null, chatHistory: [] }
+}
+
+function saveForge(data) {
+  try {
+    window.__forge__ = JSON.stringify(data)
+  } catch (_) {}
+}
+
 export default function App() {
   return <div style={{ background: COLORS.bg, minHeight: '100dvh', color: COLORS.text, fontFamily: 'Sora, sans-serif', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>FORGE</div>
 }
