@@ -30,11 +30,11 @@ const EXERCISE_LIBRARY = {
 const MUSCLES = Object.keys(EXERCISE_LIBRARY)
 const ALL_EXERCISES = MUSCLES.flatMap(m => EXERCISE_LIBRARY[m].map(name => ({ name, muscle: m })))
 
-const QUICK_START_TYPES = ['Chest', 'Shoulders', 'Back + Biceps', 'Legs', 'Full Body', 'Open Workout']
+const QUICK_START_TYPES = ['Chest', 'Shoulders + Triceps', 'Back + Biceps', 'Legs', 'Full Body', 'Open Workout']
 
 const QUICK_START_MUSCLES = {
   'Chest': ['Chest', 'Triceps'],
-  'Shoulders': ['Shoulders', 'Triceps'],
+  'Shoulders + Triceps': ['Shoulders', 'Triceps'],
   'Back + Biceps': ['Back', 'Biceps'],
   'Legs': ['Legs', 'Glutes'],
   'Full Body': ['Chest', 'Back', 'Legs', 'Shoulders'],
@@ -49,7 +49,7 @@ const QUICK_START_EXERCISES = {
     { name: 'Tricep Pushdown', muscle: 'Triceps', sets: 3, repsMin: 12, repsMax: 15, restSec: 75 },
     { name: 'Skull Crushers', muscle: 'Triceps', sets: 3, repsMin: 10, repsMax: 12, restSec: 90 },
   ],
-  'Shoulders': [
+  'Shoulders + Triceps': [
     { name: 'Dumbbell Shoulder Press', muscle: 'Shoulders', sets: 4, repsMin: 8, repsMax: 12, restSec: 120 },
     { name: 'Lateral Raises', muscle: 'Shoulders', sets: 4, repsMin: 12, repsMax: 15, restSec: 75 },
     { name: 'Rear Delt Raises', muscle: 'Shoulders', sets: 3, repsMin: 12, repsMax: 15, restSec: 75 },
