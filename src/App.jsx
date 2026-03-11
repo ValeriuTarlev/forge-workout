@@ -34,7 +34,7 @@ const QUICK_START_TYPES = ['Chest', 'Shoulders', 'Back + Biceps', 'Legs', 'Full 
 
 const QUICK_START_MUSCLES = {
   'Chest': ['Chest', 'Triceps'],
-  'Shoulders': ['Shoulders', 'Trapezoid'],
+  'Shoulders': ['Shoulders', 'Triceps'],
   'Back + Biceps': ['Back', 'Biceps'],
   'Legs': ['Legs', 'Glutes'],
   'Full Body': ['Chest', 'Back', 'Legs', 'Shoulders'],
@@ -54,7 +54,8 @@ const QUICK_START_EXERCISES = {
     { name: 'Lateral Raises', muscle: 'Shoulders', sets: 4, repsMin: 12, repsMax: 15, restSec: 75 },
     { name: 'Rear Delt Raises', muscle: 'Shoulders', sets: 3, repsMin: 12, repsMax: 15, restSec: 75 },
     { name: 'Front Raises', muscle: 'Shoulders', sets: 3, repsMin: 12, repsMax: 15, restSec: 75 },
-    { name: 'Barbell Shrugs', muscle: 'Trapezoid', sets: 3, repsMin: 12, repsMax: 15, restSec: 90 },
+    { name: 'Tricep Pushdown', muscle: 'Triceps', sets: 3, repsMin: 12, repsMax: 15, restSec: 75 },
+    { name: 'Skull Crushers', muscle: 'Triceps', sets: 3, repsMin: 10, repsMax: 12, restSec: 90 },
   ],
   'Back + Biceps': [
     { name: 'Pull-Ups', muscle: 'Back', sets: 4, repsMin: 6, repsMax: 10, restSec: 150 },
