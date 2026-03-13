@@ -217,7 +217,7 @@ function saveForge(data) {
 
 // ─── API ──────────────────────────────────────────────────────────────────────
 
-async function callAnthropic(apiKey, messages, maxTokens, systemPrompt) {
+async function callAnthropic(messages, maxTokens, systemPrompt) {
   const body = { model: 'claude-sonnet-4-20250514', max_tokens: maxTokens, messages }
   if (systemPrompt) body.system = systemPrompt
 
@@ -225,7 +225,7 @@ async function callAnthropic(apiKey, messages, maxTokens, systemPrompt) {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'x-api-key': apiKey,
+      'x-api-key': import.meta.env.VITE_ANTHROPIC_API_KEY,
       'anthropic-version': '2023-06-01',
       'anthropic-dangerous-direct-browser-access': 'true',
     },
@@ -1187,19 +1187,16 @@ function LogTab({ workouts, savedPlans, aiCycle, onQuickStart, onStartPlan, onSt
 
 // ─── PLAN TAB ─────────────────────────────────────────────────────────────────
 
-function PlanTab({ aiCycle, workouts, apiKey, onSetApiKey, onCycleGenerated }) {
+function PlanTab({ aiCycle, workouts, onCycleGenerated }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [week1Open, setWeek1Open] = useState(true)
   const [week2Open, setWeek2Open] = useState(false)
-  const [localKey, setLocalKey] = useState(apiKey)
 
   async function generate() {
-    const key = apiKey || localKey
-    if (!key) { setError('Enter your Anthropic API key first.'); return }
     setLoading(true); setError(null)
     try {
-      const text = await callAnthropic(key, [{ role: 'user', content: buildCyclePrompt(workouts) }], 4000)
+      const text = await callAnthropic([{ role: 'user', content: buildCyclePrompt(workouts) }], 4000)
       const cycle = parseCycleResponse(text)
       if (!cycle) throw new Error('Failed to parse AI response. Try again.')
       onCycleGenerated({ ...cycle, generatedAt: new Date().toISOString() })
@@ -1217,14 +1214,6 @@ function PlanTab({ aiCycle, workouts, apiKey, onSetApiKey, onCycleGenerated }) {
         <p style={{ color: COLORS.muted, fontSize: 14, marginBottom: 32, lineHeight: 1.6 }}>
           Generate a personalized 2-week training plan based on your workout history and goals.
         </p>
-        {!apiKey && (
-          <div style={{ ...S.card, marginBottom: 20 }}>
-            <div style={{ color: COLORS.muted, fontSize: 12, marginBottom: 8 }}>Anthropic API Key</div>
-            <input type="password" value={localKey}
-              onChange={e => { setLocalKey(e.target.value); onSetApiKey(e.target.value) }}
-              placeholder="sk-ant-..." style={S.input} />
-          </div>
-        )}
         {error && <div style={{ ...S.card, borderColor: COLORS.danger + '44', color: COLORS.danger, fontSize: 13, marginBottom: 16 }}>{error}</div>}
         <Btn variant="accent" onClick={generate} disabled={loading} style={{ width: '100%', padding: '16px', fontSize: 17 }}>
           {loading ? '⟳ Generating...' : '✦ Generate AI Plan'}
@@ -1321,25 +1310,22 @@ const QUICK_QUESTIONS = [
   'How is my bench progressing?',
 ]
 
-function CoachTab({ workouts, aiCycle, apiKey, onSetApiKey, chatHistory, onChatUpdate }) {
+function CoachTab({ workouts, aiCycle, chatHistory, onChatUpdate }) {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [localKey, setLocalKey] = useState(apiKey)
   const bottomRef = useRef(null)
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [chatHistory, loading])
 
-  const key = apiKey || localKey
-
   async function send(text) {
     const msg = (text || input).trim()
-    if (!msg || !key) return
+    if (!msg) return
     const newHistory = [...chatHistory, { role: 'user', content: msg }]
     onChatUpdate(newHistory)
     setInput('')
     setLoading(true)
     try {
-      const response = await callAnthropic(key, newHistory, 1024, buildCoachSystemPrompt(workouts, aiCycle))
+      const response = await callAnthropic(newHistory, 1024, buildCoachSystemPrompt(workouts, aiCycle))
       onChatUpdate([...newHistory, { role: 'assistant', content: response }])
     } catch (e) {
       onChatUpdate([...newHistory, { role: 'assistant', content: `Error: ${e.message}` }])
@@ -1358,15 +1344,6 @@ function CoachTab({ workouts, aiCycle, apiKey, onSetApiKey, chatHistory, onChatU
         </div>
       </div>
 
-      {!key && (
-        <div style={{ padding: '12px 16px', borderBottom: `1px solid ${COLORS.border}`, flexShrink: 0 }}>
-          <div style={{ color: COLORS.muted, fontSize: 12, marginBottom: 6 }}>Anthropic API Key required</div>
-          <input type="password" value={localKey}
-            onChange={e => { setLocalKey(e.target.value); onSetApiKey(e.target.value) }}
-            placeholder="sk-ant-..." style={{ ...S.input, fontSize: 13 }} />
-        </div>
-      )}
-
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px', WebkitOverflowScrolling: 'touch' }}>
         {chatHistory.length === 0 && (
           <div>
@@ -1375,10 +1352,10 @@ function CoachTab({ workouts, aiCycle, apiKey, onSetApiKey, chatHistory, onChatU
             </p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {QUICK_QUESTIONS.map(q => (
-                <button key={q} onClick={() => send(q)} disabled={!key} style={{
+                <button key={q} onClick={() => send(q)} style={{
                   padding: '8px 14px', borderRadius: 20, border: `1px solid ${COLORS.border}`,
-                  background: COLORS.input, color: COLORS.text, cursor: key ? 'pointer' : 'not-allowed',
-                  fontSize: 13, fontFamily: "'Sora', sans-serif", opacity: key ? 1 : 0.5,
+                  background: COLORS.input, color: COLORS.text, cursor: 'pointer',
+                  fontSize: 13, fontFamily: "'Sora', sans-serif",
                 }}>{q}</button>
               ))}
             </div>
@@ -1414,10 +1391,10 @@ function CoachTab({ workouts, aiCycle, apiKey, onSetApiKey, chatHistory, onChatU
       <div style={{ padding: '12px 16px', borderTop: `1px solid ${COLORS.border}`, background: COLORS.bg, display: 'flex', gap: 10, alignItems: 'flex-end', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))', flexShrink: 0 }}>
         <textarea value={input} onChange={e => setInput(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-          placeholder={key ? 'Ask your coach...' : 'Enter API key above first'}
-          disabled={!key || loading} rows={1}
+          placeholder="Ask your coach..."
+          disabled={loading} rows={1}
           style={{ ...S.input, flex: 1, resize: 'none', minHeight: 44, maxHeight: 120, overflowY: 'auto' }} />
-        <Btn variant="accent" onClick={() => send()} disabled={!key || loading || !input.trim()} style={{ padding: '12px 16px', flexShrink: 0 }}>↑</Btn>
+        <Btn variant="accent" onClick={() => send()} disabled={loading || !input.trim()} style={{ padding: '12px 16px', flexShrink: 0 }}>↑</Btn>
       </div>
     </div>
   )
@@ -1526,7 +1503,6 @@ export default function App() {
   const [savedPlans, setSavedPlans] = useState(initial.savedPlans)
   const [aiCycle, setAiCycle] = useState(initial.aiCycle)
   const [chatHistory, setChatHistory] = useState(initial.chatHistory)
-  const [apiKey, setApiKey] = useState(import.meta.env.VITE_ANTHROPIC_API_KEY || '')
   const [activeSession, setActiveSession] = useState(null)
   const [showPlanBuilder, setShowPlanBuilder] = useState(false)
 
@@ -1644,12 +1620,10 @@ export default function App() {
             onDeletePlan={handleDeletePlan} />
         )}
         {tab === 'plan' && (
-          <PlanTab aiCycle={aiCycle} workouts={workouts} apiKey={apiKey}
-            onSetApiKey={setApiKey} onCycleGenerated={handleCycleGenerated} />
+          <PlanTab aiCycle={aiCycle} workouts={workouts} onCycleGenerated={handleCycleGenerated} />
         )}
         {tab === 'coach' && (
-          <CoachTab workouts={workouts} aiCycle={aiCycle} apiKey={apiKey}
-            onSetApiKey={setApiKey} chatHistory={chatHistory} onChatUpdate={handleChatUpdate} />
+          <CoachTab workouts={workouts} aiCycle={aiCycle} chatHistory={chatHistory} onChatUpdate={handleChatUpdate} />
         )}
         {tab === 'history' && <HistoryTab workouts={workouts} />}
       </div>
