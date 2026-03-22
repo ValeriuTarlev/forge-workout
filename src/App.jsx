@@ -33,7 +33,7 @@ const ALL_EXERCISES = MUSCLES.flatMap(m => EXERCISE_LIBRARY[m].map(name => ({ na
 const QUICK_START_TYPES = ['Chest', 'Shoulders + Triceps', 'Back + Biceps', 'Legs', 'Full Body', 'Open Workout']
 
 const QUICK_START_MUSCLES = {
-  'Chest': ['Chest', 'Triceps'],
+  'Chest': ['Chest'],
   'Shoulders + Triceps': ['Shoulders', 'Triceps'],
   'Back + Biceps': ['Back', 'Biceps'],
   'Legs': ['Legs', 'Glutes'],
@@ -46,8 +46,8 @@ const QUICK_START_EXERCISES = {
     { name: 'Bench Press', muscle: 'Chest', sets: 4, repsMin: 6, repsMax: 10, restSec: 150 },
     { name: 'Incline Dumbbell Press', muscle: 'Chest', sets: 3, repsMin: 10, repsMax: 12, restSec: 120 },
     { name: 'Cable Flyes', muscle: 'Chest', sets: 3, repsMin: 12, repsMax: 15, restSec: 90 },
-    { name: 'Tricep Pushdown', muscle: 'Triceps', sets: 3, repsMin: 12, repsMax: 15, restSec: 75 },
-    { name: 'Skull Crushers', muscle: 'Triceps', sets: 3, repsMin: 10, repsMax: 12, restSec: 90 },
+    { name: 'Pec Fly', muscle: 'Chest', sets: 3, repsMin: 12, repsMax: 15, restSec: 75 },
+    { name: 'Chest Press', muscle: 'Chest', sets: 3, repsMin: 10, repsMax: 12, restSec: 90 },
   ],
   'Shoulders + Triceps': [
     { name: 'Dumbbell Shoulder Press', muscle: 'Shoulders', sets: 4, repsMin: 8, repsMax: 12, restSec: 120 },
@@ -173,22 +173,25 @@ function getLastSetData(workouts, exerciseName) {
 }
 
 function makeExercise(template, workouts = []) {
+  const saved = loadExerciseDefaults()[template.name] || {}
   const sets = template.sets || 3
   const lastData = getLastSetData(workouts, template.name)
+  const weight = lastData ? lastData.weight : (saved.weight || '')
+  const unit = lastData ? lastData.unit : (saved.unit || 'lbs')
   return {
     id: uuid(),
     name: template.name,
     muscle: template.muscle || 'Other',
     restSec: template.restSec || 90,
-    repsMin: template.repsMin || 8,
-    repsMax: template.repsMax || 12,
+    repsMin: saved.repsMin || template.repsMin || 8,
+    repsMax: saved.repsMax || template.repsMax || 12,
     targetWeight: template.targetWeight || null,
-    note: template.note || '',
+    note: saved.note || template.note || '',
     activeSetIndex: 0,
     sets: Array.from({ length: sets }, () => ({
       id: uuid(),
-      weight: lastData ? lastData.weight : '',
-      unit: lastData ? lastData.unit : 'lbs',
+      weight,
+      unit,
       reps: '',
       rpe: null,
       note: '',
@@ -201,9 +204,12 @@ function makeExercise(template, workouts = []) {
 
 // ─── STORAGE ──────────────────────────────────────────────────────────────────
 
+const FORGE_DATA_KEY = 'forge_data'
+const ACTIVE_WORKOUT_KEY = 'forge_active_workout'
+
 function loadForge() {
   try {
-    const raw = window.__forge__
+    const raw = localStorage.getItem(FORGE_DATA_KEY)
     if (raw) return JSON.parse(raw)
   } catch (_) {}
   return { workouts: [], savedPlans: [], aiCycle: null, chatHistory: [] }
@@ -211,8 +217,30 @@ function loadForge() {
 
 function saveForge(data) {
   try {
-    window.__forge__ = JSON.stringify(data)
+    localStorage.setItem(FORGE_DATA_KEY, JSON.stringify(data))
   } catch (_) {}
+}
+
+const EXERCISE_DEFAULTS_KEY = 'forge_exercise_defaults'
+
+function loadExerciseDefaults() {
+  try {
+    const raw = localStorage.getItem(EXERCISE_DEFAULTS_KEY)
+    if (raw) return JSON.parse(raw)
+  } catch (_) {}
+  return {}
+}
+
+function saveExerciseDefaults(defaults) {
+  try {
+    localStorage.setItem(EXERCISE_DEFAULTS_KEY, JSON.stringify(defaults))
+  } catch (_) {}
+}
+
+function fireNotification() {
+  if ('Notification' in window && Notification.permission === 'granted') {
+    try { new Notification('FORGE', { body: 'Rest time is up — next set!' }) } catch (_) {}
+  }
 }
 
 // ─── API ──────────────────────────────────────────────────────────────────────
@@ -577,6 +605,125 @@ function ExercisePickerSheet({ onPick, onClose }) {
   )
 }
 
+// ─── SWAP EXERCISE SHEET ──────────────────────────────────────────────────────
+
+function SwapExerciseSheet({ currentMuscle, onPick, onClose }) {
+  const [query, setQuery] = useState('')
+  const [muscleFilter, setMuscleFilter] = useState(currentMuscle || 'All')
+
+  const filtered = ALL_EXERCISES.filter(e => {
+    const matchMuscle = muscleFilter === 'All' || e.muscle === muscleFilter
+    const matchQuery = e.name.toLowerCase().includes(query.toLowerCase())
+    return matchMuscle && matchQuery
+  })
+
+  return (
+    <BottomSheet title="Swap Exercise" onClose={onClose} height="90vh">
+      <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <input style={S.input} placeholder="Search exercises..." value={query}
+          onChange={e => setQuery(e.target.value)} autoFocus />
+        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
+          {['All', ...MUSCLES].map(m => (
+            <button key={m} onClick={() => setMuscleFilter(m)} style={{
+              flexShrink: 0, padding: '6px 14px', borderRadius: 20,
+              border: `1px solid ${muscleFilter === m ? COLORS.accent : COLORS.border}`,
+              background: muscleFilter === m ? COLORS.accent + '22' : COLORS.input,
+              color: muscleFilter === m ? COLORS.accent : COLORS.muted,
+              cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: "'Sora', sans-serif",
+            }}>{m}</button>
+          ))}
+        </div>
+        {filtered.map(e => (
+          <button key={e.name + e.muscle} onClick={() => onPick(e)} style={{
+            background: COLORS.input, border: `1px solid ${COLORS.border}`,
+            borderRadius: 10, padding: '12px 14px', cursor: 'pointer',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left',
+          }}>
+            <div>
+              <div style={{ color: COLORS.text, fontWeight: 600, fontSize: 14 }}>{e.name}</div>
+              <div style={{ color: COLORS.muted, fontSize: 12, marginTop: 2 }}>{e.muscle}</div>
+            </div>
+            <span style={{ color: COLORS.accent, fontSize: 13, fontWeight: 700 }}>Swap →</span>
+          </button>
+        ))}
+        <div style={{ height: 20 }} />
+      </div>
+    </BottomSheet>
+  )
+}
+
+// ─── EXERCISE EDIT MODAL ──────────────────────────────────────────────────────
+
+function ExerciseEditModal({ exercise, onSave, onClose }) {
+  const [sets, setSets] = useState(String(exercise.sets.length))
+  const [repsMin, setRepsMin] = useState(String(exercise.repsMin))
+  const [repsMax, setRepsMax] = useState(String(exercise.repsMax))
+  const [weight, setWeight] = useState(exercise.sets[0]?.weight || '')
+  const [unit, setUnit] = useState(exercise.sets[0]?.unit || 'lbs')
+  const [note, setNote] = useState(exercise.note || '')
+
+  function handleSave() {
+    const setsCount = Math.max(1, parseInt(sets) || 3)
+    const newRepsMin = parseInt(repsMin) || 8
+    const newRepsMax = parseInt(repsMax) || 12
+    const newSets = Array.from({ length: setsCount }, (_, i) => {
+      const existing = exercise.sets[i]
+      return existing ? { ...existing, weight, unit } : { id: uuid(), weight, unit, reps: '', rpe: null, note: '', dropSets: [], done: false, showNote: false }
+    })
+    const updated = { ...exercise, repsMin: newRepsMin, repsMax: newRepsMax, note, sets: newSets }
+    const allDefaults = loadExerciseDefaults()
+    saveExerciseDefaults({ ...allDefaults, [exercise.name]: { repsMin: newRepsMin, repsMax: newRepsMax, weight, unit, note } })
+    onSave(updated)
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 400, background: 'rgba(8,8,9,0.95)', display: 'flex', alignItems: 'flex-end' }}>
+      <div style={{ ...S.card, width: '100%', borderRadius: '16px 16px 0 0', padding: '24px 20px 40px', border: 'none', borderTop: `1px solid ${COLORS.border}` }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <div style={{ fontWeight: 700, fontSize: 17 }}>{exercise.name}</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: COLORS.muted, cursor: 'pointer', fontSize: 22, lineHeight: 1 }}>✕</button>
+        </div>
+        <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
+          {[
+            { label: 'SETS', value: sets, set: setSets },
+            { label: 'REPS MIN', value: repsMin, set: setRepsMin },
+            { label: 'REPS MAX', value: repsMax, set: setRepsMax },
+          ].map(({ label, value, set }) => (
+            <div key={label} style={{ flex: 1 }}>
+              <div style={{ color: COLORS.muted, fontSize: 10, marginBottom: 6 }}>{label}</div>
+              <input type="number" inputMode="numeric" value={value} onChange={e => set(e.target.value)}
+                style={{ ...S.input, ...S.mono, fontSize: 22, fontWeight: 700, textAlign: 'center', padding: '10px 4px' }} />
+            </div>
+          ))}
+        </div>
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ color: COLORS.muted, fontSize: 10, marginBottom: 6 }}>STARTING WEIGHT</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input type="number" inputMode="decimal" value={weight} onChange={e => setWeight(e.target.value)}
+              placeholder="0"
+              style={{ ...S.input, ...S.mono, fontSize: 22, fontWeight: 700, textAlign: 'center', padding: '10px 8px', flex: 1, color: COLORS.lbs }} />
+            <button onClick={() => setUnit(u => u === 'lbs' ? 'kg' : 'lbs')} style={{
+              background: COLORS.input, border: `1px solid ${COLORS.border}`, borderRadius: 8,
+              color: COLORS.lbs, cursor: 'pointer', fontSize: 13, fontWeight: 700,
+              padding: '10px 16px', fontFamily: "'JetBrains Mono', monospace",
+            }}>{unit}</button>
+          </div>
+        </div>
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ color: COLORS.muted, fontSize: 10, marginBottom: 6 }}>NOTES</div>
+          <textarea value={note} onChange={e => setNote(e.target.value)}
+            placeholder="e.g. keep elbows tucked" rows={2}
+            style={{ ...S.input, resize: 'none' }} />
+        </div>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <Btn onClick={onClose} style={{ flex: 1 }}>Cancel</Btn>
+          <Btn variant="accent" onClick={handleSave} style={{ flex: 1 }}>Save</Btn>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── PLAN BUILDER SHEET ───────────────────────────────────────────────────────
 
 function PlanBuilderSheet({ onSave, onClose }) {
@@ -653,11 +800,35 @@ function PlanBuilderSheet({ onSave, onClose }) {
 function SessionSetupScreen({ sessionName, initialExercises, onStart, onCancel, workouts = [] }) {
   const [exercises, setExercises] = useState(initialExercises)
   const [showPicker, setShowPicker] = useState(false)
+  const [showSwap, setShowSwap] = useState(null)
+  const [showEdit, setShowEdit] = useState(null)
+
+  function moveUp(idx) {
+    if (idx === 0) return
+    setExercises(prev => { const a = [...prev]; [a[idx - 1], a[idx]] = [a[idx], a[idx - 1]]; return a })
+  }
+
+  function moveDown(idx) {
+    setExercises(prev => { if (idx >= prev.length - 1) return prev; const a = [...prev]; [a[idx], a[idx + 1]] = [a[idx + 1], a[idx]]; return a })
+  }
 
   if (showPicker) return (
     <ExercisePickerSheet
       onPick={e => { setExercises(prev => [...prev, makeExercise(e, workouts)]); setShowPicker(false) }}
       onClose={() => setShowPicker(false)}
+    />
+  )
+
+  if (showSwap !== null) return (
+    <SwapExerciseSheet
+      currentMuscle={exercises[showSwap]?.muscle}
+      onPick={e => {
+        setExercises(prev => prev.map((ex, i) => i === showSwap
+          ? makeExercise({ name: e.name, muscle: e.muscle, sets: ex.sets.length, restSec: ex.restSec, repsMin: ex.repsMin, repsMax: ex.repsMax }, workouts)
+          : ex))
+        setShowSwap(null)
+      }}
+      onClose={() => setShowSwap(null)}
     />
   )
 
@@ -673,20 +844,41 @@ function SessionSetupScreen({ sessionName, initialExercises, onStart, onCancel, 
           {exercises.length} exercise{exercises.length !== 1 ? 's' : ''} queued
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
-          {exercises.map(ex => (
-            <div key={ex.id} style={{ ...S.card, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: 14 }}>{ex.name}</div>
-                <div style={{ color: COLORS.muted, fontSize: 12, marginTop: 2 }}>
-                  <span style={S.mono}>{ex.sets.length}</span> sets ·{' '}
-                  <span style={S.mono}>{ex.repsMin}–{ex.repsMax}</span> reps ·{' '}
-                  <span style={S.mono}>{formatTime(ex.restSec)}</span> rest
+          {exercises.map((ex, idx) => (
+            <div key={ex.id} style={S.card}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>{ex.name}</div>
+                  <div style={{ color: COLORS.muted, fontSize: 12, marginTop: 2 }}>
+                    <span style={S.mono}>{ex.sets.length}</span> sets ·{' '}
+                    <span style={S.mono}>{ex.repsMin}–{ex.repsMax}</span> reps ·{' '}
+                    <span style={S.mono}>{formatTime(ex.restSec)}</span> rest
+                  </div>
+                  {ex.note ? <div style={{ color: COLORS.muted, fontSize: 11, marginTop: 4, fontStyle: 'italic' }}>{ex.note}</div> : null}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, marginLeft: 8 }}>
+                  <Tag>{ex.muscle}</Tag>
+                  <button onClick={() => setShowEdit(idx)} style={{ background: 'none', border: 'none', color: COLORS.muted, cursor: 'pointer', fontSize: 16, padding: '4px 6px' }} title="Edit">✎</button>
+                  <button onClick={() => setExercises(prev => prev.filter(e => e.id !== ex.id))}
+                    style={{ background: 'none', border: 'none', color: COLORS.danger, cursor: 'pointer', fontSize: 18, padding: '4px 6px' }}>✕</button>
                 </div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <Tag>{ex.muscle}</Tag>
-                <button onClick={() => setExercises(prev => prev.filter(e => e.id !== ex.id))}
-                  style={{ background: 'none', border: 'none', color: COLORS.danger, cursor: 'pointer', fontSize: 18 }}>✕</button>
+              <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+                <button onClick={() => moveUp(idx)} disabled={idx === 0} style={{
+                  padding: '5px 12px', borderRadius: 6, border: `1px solid ${COLORS.border}`,
+                  background: COLORS.input, color: idx === 0 ? COLORS.border : COLORS.muted,
+                  cursor: idx === 0 ? 'default' : 'pointer', fontSize: 13, fontWeight: 700,
+                }}>↑</button>
+                <button onClick={() => moveDown(idx)} disabled={idx === exercises.length - 1} style={{
+                  padding: '5px 12px', borderRadius: 6, border: `1px solid ${COLORS.border}`,
+                  background: COLORS.input, color: idx === exercises.length - 1 ? COLORS.border : COLORS.muted,
+                  cursor: idx === exercises.length - 1 ? 'default' : 'pointer', fontSize: 13, fontWeight: 700,
+                }}>↓</button>
+                <button onClick={() => setShowSwap(idx)} style={{
+                  padding: '5px 12px', borderRadius: 6, border: `1px solid ${COLORS.border}`,
+                  background: COLORS.input, color: COLORS.muted,
+                  cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: "'Sora', sans-serif",
+                }}>⇄ Swap</button>
               </div>
             </div>
           ))}
@@ -697,6 +889,13 @@ function SessionSetupScreen({ sessionName, initialExercises, onStart, onCancel, 
           ▶ Start Workout
         </Btn>
       </div>
+      {showEdit !== null && exercises[showEdit] && (
+        <ExerciseEditModal
+          exercise={exercises[showEdit]}
+          onSave={updated => { setExercises(prev => prev.map((e, i) => i === showEdit ? updated : e)); setShowEdit(null) }}
+          onClose={() => setShowEdit(null)}
+        />
+      )}
     </div>
   )
 }
@@ -706,7 +905,7 @@ function SessionSetupScreen({ sessionName, initialExercises, onStart, onCancel, 
 const RING_RADIUS = 54
 const RING_CIRC = 2 * Math.PI * RING_RADIUS
 
-function RestTimerOverlay({ phase, secondsLeft, totalSeconds, onSkip, onAdd30 }) {
+function RestTimerOverlay({ phase, secondsLeft, totalSeconds, onSkip, onAdd15 }) {
   const progress = totalSeconds > 0 ? secondsLeft / totalSeconds : 1
   const offset = RING_CIRC * (1 - progress)
   const ringColor = progress > 0.5 ? COLORS.success : progress > 0.25 ? '#ffcc00' : COLORS.danger
@@ -746,7 +945,7 @@ function RestTimerOverlay({ phase, secondsLeft, totalSeconds, onSkip, onAdd30 })
       {phase === 'resting' && (
         <div style={{ display: 'flex', gap: 12 }}>
           <Btn onClick={onSkip} style={{ padding: '12px 24px' }}>Skip Rest →</Btn>
-          <Btn onClick={onAdd30} style={{ padding: '12px 24px' }}>+30s</Btn>
+          <Btn onClick={onAdd15} style={{ padding: '12px 24px' }}>+15s</Btn>
         </div>
       )}
     </div>
@@ -755,8 +954,20 @@ function RestTimerOverlay({ phase, secondsLeft, totalSeconds, onSkip, onAdd30 })
 
 // ─── SESSION PLAN SHEET ───────────────────────────────────────────────────────
 
-function SessionPlanSheet({ exercises, currentIdx, onJump, onAddExercise, onEndWorkout, onClose, workouts = [] }) {
+function SessionPlanSheet({ exercises, currentIdx, onJump, onAddExercise, onReorder, onEndWorkout, onClose, workouts = [] }) {
   const [showPicker, setShowPicker] = useState(false)
+
+  function moveUp(idx) {
+    if (idx === 0) return
+    const a = [...exercises]; [a[idx - 1], a[idx]] = [a[idx], a[idx - 1]]
+    onReorder(a, currentIdx === idx ? idx - 1 : currentIdx === idx - 1 ? idx : currentIdx)
+  }
+
+  function moveDown(idx) {
+    if (idx >= exercises.length - 1) return
+    const a = [...exercises]; [a[idx], a[idx + 1]] = [a[idx + 1], a[idx]]
+    onReorder(a, currentIdx === idx ? idx + 1 : currentIdx === idx + 1 ? idx : currentIdx)
+  }
 
   if (showPicker) return (
     <ExercisePickerSheet
@@ -772,20 +983,32 @@ function SessionPlanSheet({ exercises, currentIdx, onJump, onAddExercise, onEndW
           const doneSets = ex.sets.filter(s => s.done).length
           const isCurrent = idx === currentIdx
           return (
-            <button key={ex.id} onClick={() => { onJump(idx); onClose() }} style={{
+            <div key={ex.id} style={{
               ...S.card, border: `1px solid ${isCurrent ? COLORS.accent : COLORS.border}`,
               background: isCurrent ? COLORS.accent + '11' : COLORS.card,
-              cursor: 'pointer', textAlign: 'left', width: '100%',
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             }}>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: 14, color: isCurrent ? COLORS.accent : COLORS.text }}>
-                  {idx + 1}. {ex.name}
+              <div onClick={() => { onJump(idx); onClose() }} style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: isCurrent ? COLORS.accent : COLORS.text }}>
+                    {idx + 1}. {ex.name}
+                  </div>
+                  <div style={{ color: COLORS.muted, fontSize: 12, marginTop: 2 }}>{doneSets}/{ex.sets.length} sets done</div>
                 </div>
-                <div style={{ color: COLORS.muted, fontSize: 12, marginTop: 2 }}>{doneSets}/{ex.sets.length} sets done</div>
+                {doneSets === ex.sets.length && <span style={{ color: COLORS.success, fontSize: 18 }}>✓</span>}
               </div>
-              {doneSets === ex.sets.length && <span style={{ color: COLORS.success, fontSize: 18 }}>✓</span>}
-            </button>
+              <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                <button onClick={() => moveUp(idx)} disabled={idx === 0} style={{
+                  padding: '4px 10px', borderRadius: 6, border: `1px solid ${COLORS.border}`,
+                  background: COLORS.input, color: idx === 0 ? COLORS.border : COLORS.muted,
+                  cursor: idx === 0 ? 'default' : 'pointer', fontSize: 12, fontWeight: 700,
+                }}>↑</button>
+                <button onClick={() => moveDown(idx)} disabled={idx === exercises.length - 1} style={{
+                  padding: '4px 10px', borderRadius: 6, border: `1px solid ${COLORS.border}`,
+                  background: COLORS.input, color: idx === exercises.length - 1 ? COLORS.border : COLORS.muted,
+                  cursor: idx === exercises.length - 1 ? 'default' : 'pointer', fontSize: 12, fontWeight: 700,
+                }}>↓</button>
+              </div>
+            </div>
           )
         })}
         <Btn onClick={() => setShowPicker(true)} style={{ width: '100%', marginTop: 4 }}>+ Add Exercise</Btn>
@@ -798,10 +1021,10 @@ function SessionPlanSheet({ exercises, currentIdx, onJump, onAddExercise, onEndW
 
 // ─── ACTIVE WORKOUT SCREEN ────────────────────────────────────────────────────
 
-function ActiveWorkoutScreen({ session, onUpdate, onEnd, workouts = [] }) {
+function ActiveWorkoutScreen({ session, onUpdate, onEnd, workouts = [], restTimer, setRestTimer }) {
   const [showPlanSheet, setShowPlanSheet] = useState(false)
-  const [restState, setRestState] = useState({ phase: 'idle', secondsLeft: 0, totalSeconds: 0 })
-  const intervalRef = useRef(null)
+  const [showSwap, setShowSwap] = useState(false)
+  const [tick, setTick] = useState(0)
   const elapsed = useSessionTimer(true)
 
   const exercises = session.exercises
@@ -810,46 +1033,44 @@ function ActiveWorkoutScreen({ session, onUpdate, onEnd, workouts = [] }) {
   const setIdx = ex ? ex.activeSetIndex : 0
   const currentSet = ex ? ex.sets[setIdx] : null
 
-  function startRestTimer(restSec) {
-    clearInterval(intervalRef.current)
-    let count = 5
-    setRestState({ phase: 'getReady', secondsLeft: 5, totalSeconds: 5 })
-    intervalRef.current = setInterval(() => {
-      count--
-      if (count <= 0) {
-        clearInterval(intervalRef.current)
-        setTimeout(() => startRestPhase(restSec), 50)
-      } else {
-        setRestState(prev => ({ ...prev, secondsLeft: count }))
-      }
-    }, 1000)
-  }
+  // Tick interval — drives display updates and phase-transition checks
+  useEffect(() => {
+    if (restTimer.phase === 'idle') return
+    const id = setInterval(() => setTick(t => t + 1), 250)
+    return () => clearInterval(id)
+  }, [restTimer.phase])
 
-  function startRestPhase(restSec) {
-    clearInterval(intervalRef.current)
-    let count = restSec
-    setRestState({ phase: 'resting', secondsLeft: restSec, totalSeconds: restSec })
-    intervalRef.current = setInterval(() => {
-      count--
-      if (count <= 0) {
-        clearInterval(intervalRef.current)
-        playBeep()
-        setRestState({ phase: 'idle', secondsLeft: 0, totalSeconds: 0 })
-        advanceSet()
-      } else {
-        setRestState(prev => ({ ...prev, secondsLeft: count }))
-      }
-    }, 1000)
+  // Phase transition check — runs on every tick
+  useEffect(() => {
+    if (restTimer.phase === 'idle' || !restTimer.startedAt) return
+    const remaining = restTimer.durationMs - (Date.now() - restTimer.startedAt)
+    if (remaining > 0) return
+    if (restTimer.phase === 'getReady') {
+      setRestTimer({ phase: 'resting', startedAt: Date.now(), durationMs: restTimer.targetRestSec * 1000, targetRestSec: restTimer.targetRestSec })
+    } else if (restTimer.phase === 'resting') {
+      setRestTimer({ phase: 'idle', startedAt: null, durationMs: 0, targetRestSec: 0 })
+      playBeep()
+      fireNotification()
+      advanceSet()
+    }
+  }, [tick])
+
+  const timerSecondsLeft = restTimer.phase !== 'idle' && restTimer.startedAt
+    ? Math.max(0, Math.ceil((restTimer.durationMs - (Date.now() - restTimer.startedAt)) / 1000))
+    : 0
+  const timerTotalSeconds = Math.round(restTimer.durationMs / 1000)
+
+  function startRestTimer(restSec) {
+    setRestTimer({ phase: 'getReady', startedAt: Date.now(), durationMs: 5000, targetRestSec: restSec })
   }
 
   function skipRest() {
-    clearInterval(intervalRef.current)
-    setRestState({ phase: 'idle', secondsLeft: 0, totalSeconds: 0 })
+    setRestTimer({ phase: 'idle', startedAt: null, durationMs: 0, targetRestSec: 0 })
     advanceSet()
   }
 
-  function add30() {
-    setRestState(prev => ({ ...prev, secondsLeft: prev.secondsLeft + 30, totalSeconds: prev.totalSeconds + 30 }))
+  function add15() {
+    setRestTimer(prev => ({ ...prev, durationMs: prev.durationMs + 15000 }))
   }
 
   function advanceSet() {
@@ -870,8 +1091,7 @@ function ActiveWorkoutScreen({ session, onUpdate, onEnd, workouts = [] }) {
     const isLastSet = setIdx === ex.sets.length - 1
     const isLastExercise = exIdx === exercises.length - 1
     if (isLastSet && isLastExercise) {
-      clearInterval(intervalRef.current)
-      setRestState({ phase: 'idle', secondsLeft: 0, totalSeconds: 0 })
+      setRestTimer({ phase: 'idle', startedAt: null, durationMs: 0, targetRestSec: 0 })
       onEnd()
     } else {
       startRestTimer(ex.restSec)
@@ -898,8 +1118,6 @@ function ActiveWorkoutScreen({ session, onUpdate, onEnd, workouts = [] }) {
     onUpdate(exIdx, { sets: updatedSets })
   }
 
-  useEffect(() => () => clearInterval(intervalRef.current), [])
-
   if (!ex) return null
 
   const isLastSet = setIdx === ex.sets.length - 1
@@ -914,9 +1132,14 @@ function ActiveWorkoutScreen({ session, onUpdate, onEnd, workouts = [] }) {
             <div style={{ flex: 1 }}>
               <div style={{ color: COLORS.muted, fontSize: 12, marginBottom: 4 }}>Exercise {exIdx + 1}/{exercises.length}</div>
               <h2 style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.2 }}>{ex.name}</h2>
-              <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+              <div style={{ display: 'flex', gap: 8, marginTop: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                 <Tag>{ex.muscle}</Tag>
                 <Tag color={COLORS.muted}>{formatTime(ex.restSec)} rest</Tag>
+                <button onClick={() => setShowSwap(true)} style={{
+                  background: 'none', border: `1px solid ${COLORS.border}`, borderRadius: 12,
+                  color: COLORS.muted, cursor: 'pointer', fontSize: 11, fontWeight: 600,
+                  padding: '2px 8px', fontFamily: "'Sora', sans-serif",
+                }}>⇄ Swap</button>
               </div>
             </div>
             <div style={{ ...S.mono, fontSize: 15, fontWeight: 700, color: COLORS.accent, paddingTop: 4 }}>{formatMMSS(elapsed)}</div>
@@ -1030,10 +1253,16 @@ function ActiveWorkoutScreen({ session, onUpdate, onEnd, workouts = [] }) {
                     const newSet = { id: uuid(), weight: currentSet.weight || '', unit: currentSet.unit || 'lbs', reps: '', rpe: null, note: '', dropSets: [], done: false, showNote: false }
                     onUpdate(exIdx, { sets: [...ex.sets, newSet] })
                   }},
-                ].map(({ label, action }) => (
-                  <button key={label} onClick={action} style={{
+                  { label: '− Set', disabled: ex.sets.length <= 1, action: () => {
+                    if (ex.sets.length <= 1) return
+                    const newSets = ex.sets.slice(0, -1)
+                    onUpdate(exIdx, { sets: newSets, activeSetIndex: Math.min(setIdx, newSets.length - 1) })
+                  }},
+                ].map(({ label, action, disabled }) => (
+                  <button key={label} onClick={action} disabled={disabled} style={{
                     padding: '8px 14px', borderRadius: 8, border: `1px solid ${COLORS.border}`,
-                    background: COLORS.input, color: COLORS.muted, cursor: 'pointer',
+                    background: COLORS.input, color: disabled ? COLORS.border : COLORS.muted,
+                    cursor: disabled ? 'default' : 'pointer',
                     fontSize: 13, fontWeight: 600, fontFamily: "'Sora', sans-serif",
                   }}>{label}</button>
                 ))}
@@ -1064,15 +1293,27 @@ function ActiveWorkoutScreen({ session, onUpdate, onEnd, workouts = [] }) {
         </div>
       </div>
 
-      {restState.phase !== 'idle' && (
-        <RestTimerOverlay phase={restState.phase} secondsLeft={restState.secondsLeft}
-          totalSeconds={restState.totalSeconds} onSkip={skipRest} onAdd30={add30} />
+      {restTimer.phase !== 'idle' && (
+        <RestTimerOverlay phase={restTimer.phase} secondsLeft={timerSecondsLeft}
+          totalSeconds={timerTotalSeconds} onSkip={skipRest} onAdd15={add15} />
+      )}
+
+      {showSwap && (
+        <SwapExerciseSheet
+          currentMuscle={ex.muscle}
+          onPick={e => {
+            onUpdate(exIdx, makeExercise({ name: e.name, muscle: e.muscle, sets: ex.sets.length, restSec: ex.restSec, repsMin: ex.repsMin, repsMax: ex.repsMax }, workouts))
+            setShowSwap(false)
+          }}
+          onClose={() => setShowSwap(false)}
+        />
       )}
 
       {showPlanSheet && (
         <SessionPlanSheet exercises={exercises} currentIdx={exIdx}
           onJump={idx => onUpdate(null, null, idx)}
           onAddExercise={ex => onUpdate(null, null, null, ex)}
+          onReorder={(newExercises, newIdx) => onUpdate(null, null, newIdx, null, newExercises)}
           onEndWorkout={onEnd} onClose={() => setShowPlanSheet(false)} workouts={workouts} />
       )}
     </>
@@ -1504,7 +1745,31 @@ export default function App() {
   const [aiCycle, setAiCycle] = useState(initial.aiCycle)
   const [chatHistory, setChatHistory] = useState(initial.chatHistory)
   const [activeSession, setActiveSession] = useState(null)
+  const [restTimer, setRestTimer] = useState({ phase: 'idle', startedAt: null, durationMs: 0, targetRestSec: 0 })
   const [showPlanBuilder, setShowPlanBuilder] = useState(false)
+  const [pendingResume, setPendingResume] = useState(() => {
+    try {
+      const saved = localStorage.getItem(ACTIVE_WORKOUT_KEY)
+      if (saved) return JSON.parse(saved)
+    } catch (_) {}
+    return null
+  })
+
+  // Request notification permission on first load
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission()
+    }
+  }, [])
+
+  // Persist active workout to localStorage on every change
+  useEffect(() => {
+    if (activeSession) {
+      try { localStorage.setItem(ACTIVE_WORKOUT_KEY, JSON.stringify({ session: activeSession, restTimer })) } catch (_) {}
+    } else {
+      try { localStorage.removeItem(ACTIVE_WORKOUT_KEY) } catch (_) {}
+    }
+  }, [activeSession, restTimer])
 
   function persist(updates = {}) {
     saveForge({ workouts, savedPlans, aiCycle, chatHistory, ...updates })
@@ -1531,13 +1796,15 @@ export default function App() {
     setActiveScreen('sessionSetup')
   }
 
-  function handleSessionUpdate(exIdx, updates, newExIdx, addExercise) {
+  function handleSessionUpdate(exIdx, updates, newExIdx, addExercise, replaceAllExercises) {
     setActiveSession(prev => {
       if (!prev) return prev
-      let exercises = [...prev.exercises]
-      if (addExercise) exercises = [...exercises, addExercise]
-      if (exIdx !== null && exIdx !== undefined && updates !== null && updates !== undefined) {
-        exercises = exercises.map((ex, i) => i === exIdx ? { ...ex, ...updates } : ex)
+      let exercises = replaceAllExercises ? [...replaceAllExercises] : [...prev.exercises]
+      if (!replaceAllExercises) {
+        if (addExercise) exercises = [...exercises, addExercise]
+        if (exIdx !== null && exIdx !== undefined && updates !== null && updates !== undefined) {
+          exercises = exercises.map((ex, i) => i === exIdx ? { ...ex, ...updates } : ex)
+        }
       }
       const exerciseIndex = (newExIdx !== null && newExIdx !== undefined) ? newExIdx : prev.exerciseIndex
       return { ...prev, exercises, exerciseIndex }
@@ -1561,8 +1828,22 @@ export default function App() {
     setWorkouts(newWorkouts)
     persist({ workouts: newWorkouts })
     setActiveSession(null)
+    setRestTimer({ phase: 'idle', startedAt: null, durationMs: 0, targetRestSec: 0 })
     setActiveScreen('home')
     setTab('log')
+  }
+
+  function handleResume() {
+    const { session, restTimer: savedTimer } = pendingResume
+    setActiveSession(session)
+    setRestTimer(savedTimer || { phase: 'idle', startedAt: null, durationMs: 0, targetRestSec: 0 })
+    setActiveScreen('activeWorkout')
+    setPendingResume(null)
+  }
+
+  function handleDiscard() {
+    try { localStorage.removeItem(ACTIVE_WORKOUT_KEY) } catch (_) {}
+    setPendingResume(null)
   }
 
   function handleSavePlan(plan) {
@@ -1588,6 +1869,24 @@ export default function App() {
     persist({ chatHistory: history })
   }
 
+  if (pendingResume && pendingResume.session) {
+    return (
+      <div style={S.app}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', padding: 24 }}>
+          <div style={{ ...S.card, textAlign: 'center', padding: 32, maxWidth: 340, width: '100%' }}>
+            <div style={{ color: COLORS.muted, fontSize: 12, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 16 }}>Active Workout Found</div>
+            <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>{pendingResume.session.name}</div>
+            <div style={{ color: COLORS.muted, fontSize: 14, marginBottom: 28 }}>You have a workout in progress. Resume it?</div>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <Btn variant="accent" onClick={handleResume} style={{ flex: 1, padding: '14px 0' }}>Resume</Btn>
+              <Btn variant="danger" onClick={handleDiscard} style={{ flex: 1, padding: '14px 0' }}>Discard</Btn>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (activeScreen === 'sessionSetup' && activeSession) {
     return (
       <div style={S.app}>
@@ -1605,7 +1904,7 @@ export default function App() {
   if (activeScreen === 'activeWorkout' && activeSession) {
     return (
       <div style={S.app}>
-        <ActiveWorkoutScreen session={activeSession} onUpdate={handleSessionUpdate} onEnd={handleEndSession} workouts={workouts} />
+        <ActiveWorkoutScreen session={activeSession} onUpdate={handleSessionUpdate} onEnd={handleEndSession} workouts={workouts} restTimer={restTimer} setRestTimer={setRestTimer} />
       </div>
     )
   }
