@@ -6,18 +6,20 @@ A dark, fast, native-feeling PWA for logging gym sessions on iPhone. Built with 
 
 ## What it does
 
-FORGE is a personal workout tracker designed around a 4-day training split (Chest / Shoulders / Back + Biceps / Legs). It logs every set, weight, and rep you do — then uses that data to give you AI-generated training plans and personalized coaching advice.
+FORGE is a personal workout tracker designed around a 4-day training split (Chest / Shoulders + Triceps / Back + Biceps / Legs). It logs every set, weight, and rep you do — then uses that data to give you AI-generated training plans and personalized coaching advice.
 
 **Core features:**
 
 - **Log workouts** — track sets, reps, weight (lbs or kg), RPE, drop sets, and notes per set
 - **Pre-fills last weight** — every exercise starts with the weight you used last session
-- **Rest timer** — 5-second get-ready countdown + circular ring that drains over your rest period
+- **Rest timer** — 5-second get-ready countdown + circular ring that drains over your rest period, wall-clock accurate when backgrounded
+- **Timer notifications** — fires a push notification when rest ends, even if the app is in the background (Android/iOS 16.4+)
+- **Session persistence** — active workout is saved to localStorage on every change; if the app closes mid-session, it prompts to resume on reopen
 - **AI training cycle** — generates a personalized 2-week plan based on your workout history
 - **AI coach chat** — context-aware assistant that knows your actual numbers and flags overtraining
 - **Session history** — full log of every workout with volume and duration stats
 - **Saved plans** — build and reuse custom workout templates
-- **PWA** — installs to iPhone home screen, works like a native app
+- **PWA** — installs to iPhone home screen, works like a native app, no pinch-zoom
 
 ---
 
@@ -28,7 +30,7 @@ FORGE is a personal workout tracker designed around a 4-day training split (Ches
 | Framework | React (Vite) |
 | Styling | Inline styles only — no UI libraries |
 | Routing | None — state-based navigation |
-| Storage | `window.__forge__` (JSON, session-scoped) |
+| Storage | `localStorage` (persistent across sessions) |
 | AI | Anthropic API (`claude-sonnet-4-20250514`) |
 | Fonts | JetBrains Mono + Sora (Google Fonts CDN) |
 | Deploy | Vercel |
@@ -116,12 +118,30 @@ All logged sessions, newest first. Tap any session to see the full set-by-set br
 ## Active workout flow
 
 1. Tap a quick-start button (e.g. **Chest**) or start a saved plan
-2. Review and adjust the exercise queue on the setup screen
+2. Review and adjust the exercise queue on the setup screen — reorder with ↑↓, swap any exercise, or edit sets/reps/weight targets
 3. Tap **▶ Start Workout** — the app goes fullscreen
 4. Log each set: enter weight and reps, optionally set RPE or add a drop set
 5. Tap **✓ Set Done** — a 5-second get-ready countdown plays, then the rest timer starts
-6. The rest timer is a circular ring that drains from green → yellow → red. Skip or add 30 seconds as needed
+6. The rest timer uses wall-clock timestamps so it stays accurate when backgrounded. Skip or add +15 seconds as needed
 7. After the last set of the last exercise, the session is saved automatically
+
+**If the app closes mid-workout**, reopening it shows a Resume/Discard prompt to pick up exactly where you left off.
+
+---
+
+## Exercise management
+
+### Setup screen (before workout)
+Each exercise card has:
+- **↑ ↓** — reorder within the queue
+- **⇄ Swap** — replace with any other exercise (filtered by muscle group, with search)
+- **✎ Edit** — customize sets, rep range, starting weight, and notes (saved as defaults for future sessions)
+- **✕** — remove from queue
+
+### During workout
+- **⇄ Swap** button in the exercise header to replace the current exercise on the fly
+- **+ Set / − Set** buttons to add or remove sets (minimum 1)
+- **↑ ↓** reorder buttons in the session plan sheet (tap the **≡** pill at the bottom)
 
 ---
 
@@ -132,6 +152,40 @@ All logged sessions, newest first. Tap any session to see the full set-by-set br
 **Chest** · **Back** · **Shoulders** · **Biceps** · **Triceps** · **Legs** · **Glutes** · **Trapezoid** · **Core**
 
 The exercise picker has a search bar, muscle group filter chips, and a custom exercise input for anything not in the list.
+
+### Default splits
+
+| Split | Muscle groups |
+|---|---|
+| Chest | Chest only |
+| Shoulders + Triceps | Shoulders, Triceps |
+| Back + Biceps | Back, Biceps |
+| Legs | Legs, Glutes |
+| Full Body | Chest, Back, Legs, Shoulders |
+| Open Workout | No preset exercises |
+
+---
+
+## Storage
+
+All data is persisted to `localStorage` across sessions.
+
+| Key | Contents |
+|---|---|
+| `forge_data` | Workout history, saved plans, AI cycle, chat history |
+| `forge_active_workout` | In-progress session + rest timer state |
+| `forge_exercise_defaults` | Per-exercise customizations (sets, reps, weight, notes) |
+
+Data shape for `forge_data`:
+
+```json
+{
+  "workouts": [...],
+  "savedPlans": [...],
+  "aiCycle": { ... },
+  "chatHistory": [...]
+}
+```
 
 ---
 
@@ -157,23 +211,6 @@ Redeploy after adding the variable.
 1. Open the deployed URL in Safari
 2. Tap the share icon → **Add to Home Screen**
 3. The app launches in standalone mode (no browser chrome, full screen)
-
----
-
-## Storage
-
-All data is stored in `window.__forge__` as a JSON string. This persists within the browser session but resets if the tab is closed. No server, no database, no account.
-
-Data shape:
-
-```json
-{
-  "workouts": [...],
-  "savedPlans": [...],
-  "aiCycle": { ... },
-  "chatHistory": [...]
-}
-```
 
 ---
 
