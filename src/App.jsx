@@ -172,12 +172,12 @@ function getLastSetData(workouts, exerciseName) {
   return null
 }
 
-function makeExercise(template, workouts = []) {
+function makeExercise(template, workouts = [], defaultUnit = 'lbs') {
   const saved = loadExerciseDefaults()[template.name] || {}
   const sets = template.sets || 3
   const lastData = getLastSetData(workouts, template.name)
   const weight = lastData ? lastData.weight : (saved.weight || '')
-  const unit = lastData ? lastData.unit : (saved.unit || 'lbs')
+  const unit = lastData ? lastData.unit : (saved.unit || defaultUnit)
   return {
     id: uuid(),
     name: template.name,
@@ -237,6 +237,33 @@ function saveExerciseDefaults(defaults) {
   } catch (_) {}
 }
 
+const PROFILE_KEY = 'forge_profile'
+
+function loadProfile() {
+  try {
+    const raw = localStorage.getItem(PROFILE_KEY)
+    if (raw) return JSON.parse(raw)
+  } catch (_) {}
+  return null
+}
+
+function saveProfile(profile) {
+  try {
+    localStorage.setItem(PROFILE_KEY, JSON.stringify(profile))
+  } catch (_) {}
+}
+
+function profileDisplayHeight(profile) {
+  if (!profile) return ''
+  if (profile.heightUnit === 'ft') return `${profile.heightFt || 0}'${profile.heightIn || 0}"`
+  return `${profile.height || ''}cm`
+}
+
+function profileDisplayWeight(profile) {
+  if (!profile) return ''
+  return `${profile.weight || ''}${profile.weightUnit || 'kg'}`
+}
+
 function fireNotification() {
   if ('Notification' in window && Notification.permission === 'granted') {
     try { new Notification('FORGE', { body: 'Rest time is up — next set!' }) } catch (_) {}
@@ -269,7 +296,7 @@ async function callAnthropic(messages, maxTokens, systemPrompt) {
   return data.content[0].text
 }
 
-function buildCoachSystemPrompt(workouts, aiCycle) {
+function buildCoachSystemPrompt(workouts, aiCycle, profile) {
   const last15 = workouts.slice(0, 15)
   const last14Days = workouts.filter(w => isWithin14Days(w.startedAt))
 
@@ -317,10 +344,21 @@ function buildCoachSystemPrompt(workouts, aiCycle) {
     return `  - ${m}: ${sets} sets${flag}`
   }).join('\n')
 
-  return `You are FORGE, an elite AI strength coach. Direct, data-driven, personalized.
+  const expLabel = { beginner: 'Beginner (<1yr)', intermediate: 'Intermediate (1-3yrs)', advanced: 'Advanced (3+yrs)' }
+  const goalLabel = { muscle: 'Muscle Gain', fatloss: 'Fat Loss', strength: 'Strength', fitness: 'General Fitness' }
+  const equipLabel = { full: 'Full Gym', home: 'Home Gym', minimal: 'Minimal Equipment' }
+
+  const profileLines = profile ? [
+    `- Name: ${profile.name || 'User'} | Age: ${profile.age || '?'} | Height: ${profileDisplayHeight(profile)} | Weight: ${profileDisplayWeight(profile)}`,
+    `- Experience: ${expLabel[profile.experience] || profile.experience} | Goal: ${goalLabel[profile.goal] || profile.goal}`,
+    `- Equipment: ${equipLabel[profile.equipment] || profile.equipment} | Frequency: ${profile.daysPerWeek || 4} days/week`,
+    `- Preferred unit: ${profile.workoutUnit || 'lbs'}`,
+  ].join('\n') : '- Goal: Muscle Gain | Equipment: Full Gym | Frequency: 4 days/week'
+
+  return `You are FORGE, an elite AI strength coach. Direct, data-driven, personalized. Address the user by name.
 
 USER PROFILE:
-- Goal: Muscle Gain | Equipment: Full Gym | Frequency: 4 days/week | Default unit: lbs
+${profileLines}
 - Total sessions: ${workouts.length}
 - Active AI cycle: ${aiCycle ? aiCycle.cycleName : 'None'}
 
@@ -330,10 +368,10 @@ ${exerciseLines || '  No data yet'}
 MUSCLE VOLUME (last 14 days):
 ${volumeLines}
 
-RULES: Suggest specific weights using progressive overload. Warn about overtraining (>20 sets/14d) or undertraining (0 sets/14d). Be concise and use numbers.`
+RULES: Tailor advice to the user's experience level and goal. Suggest specific weights using progressive overload. Warn about overtraining (>20 sets/14d) or undertraining (0 sets/14d). Be concise and use numbers. Use the user's preferred weight unit.`
 }
 
-function buildCyclePrompt(workouts) {
+function buildCyclePrompt(workouts, profile) {
   const last10 = workouts.slice(0, 10)
   const historyText = last10.map(w =>
     `${formatDate(w.startedAt)} — ${w.name}: ${w.exercises.map(e =>
@@ -341,8 +379,15 @@ function buildCyclePrompt(workouts) {
     ).join(' | ')}`
   ).join('\n')
 
+  const expLabel = { beginner: 'Beginner', intermediate: 'Intermediate', advanced: 'Advanced' }
+  const goalLabel = { muscle: 'Muscle Gain', fatloss: 'Fat Loss', strength: 'Strength', fitness: 'General Fitness' }
+  const equipLabel = { full: 'Full Gym', home: 'Home Gym', minimal: 'Minimal Equipment' }
+  const profileLine = profile
+    ? `Goal: ${goalLabel[profile.goal] || 'Muscle Gain'} | Equipment: ${equipLabel[profile.equipment] || 'Full Gym'} | Frequency: ${profile.daysPerWeek || 4} days/week | Experience: ${expLabel[profile.experience] || 'Intermediate'} | Preferred unit: ${profile.workoutUnit || 'lbs'}`
+    : 'Goal: Muscle Gain | Equipment: Full gym | Frequency: 4 days/week'
+
   return `Generate a personalized 2-week training cycle:
-- Goal: Muscle Gain | Equipment: Full gym | Frequency: 4 days/week
+- ${profileLine}
 
 Recent history:
 ${historyText || 'No previous sessions'}
@@ -508,6 +553,392 @@ function BottomSheet({ title, onClose, children, height = '85vh' }) {
   )
 }
 
+// ─── ONBOARDING ───────────────────────────────────────────────────────────────
+
+function OnboardingScreen({ onComplete }) {
+  const [step, setStep] = useState(0)
+  const [form, setForm] = useState({
+    name: '', age: '', heightUnit: 'cm', height: '', heightFt: '', heightIn: '',
+    weight: '', weightUnit: 'kg', workoutUnit: 'lbs',
+    experience: 'intermediate', goal: 'muscle', daysPerWeek: '4', equipment: 'full',
+  })
+
+  function set(key, val) { setForm(prev => ({ ...prev, [key]: val })) }
+
+  const steps = [
+    // 0: Welcome + Name
+    () => (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 48, fontWeight: 900, letterSpacing: -2, color: COLORS.accent, fontFamily: "'JetBrains Mono', monospace" }}>FORGE</div>
+          <div style={{ color: COLORS.muted, fontSize: 14, marginTop: 8 }}>Your AI strength coach. Let's set up your profile.</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 12, color: COLORS.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Your name</div>
+          <input value={form.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Alex"
+            style={{ ...S.input, width: '100%', boxSizing: 'border-box', fontSize: 18, padding: '14px 16px' }} />
+        </div>
+      </div>
+    ),
+    // 1: Stats
+    () => (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <div style={{ fontSize: 20, fontWeight: 700 }}>Your stats</div>
+        <div style={{ display: 'flex', gap: 12 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 12, color: COLORS.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Age</div>
+            <input value={form.age} onChange={e => set('age', e.target.value)} placeholder="25" type="number"
+              style={{ ...S.input, width: '100%', boxSizing: 'border-box' }} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 12, color: COLORS.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Height</div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button onClick={() => set('heightUnit', 'cm')} style={{ ...S.btn, flex: 1, padding: '8px 0', background: form.heightUnit === 'cm' ? COLORS.accent : COLORS.input, color: form.heightUnit === 'cm' ? '#000' : COLORS.muted, fontSize: 12 }}>cm</button>
+              <button onClick={() => set('heightUnit', 'ft')} style={{ ...S.btn, flex: 1, padding: '8px 0', background: form.heightUnit === 'ft' ? COLORS.accent : COLORS.input, color: form.heightUnit === 'ft' ? '#000' : COLORS.muted, fontSize: 12 }}>ft</button>
+            </div>
+          </div>
+        </div>
+        {form.heightUnit === 'cm' ? (
+          <div>
+            <div style={{ fontSize: 12, color: COLORS.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Height (cm)</div>
+            <input value={form.height} onChange={e => set('height', e.target.value)} placeholder="175" type="number"
+              style={{ ...S.input, width: '100%', boxSizing: 'border-box' }} />
+          </div>
+        ) : (
+          <div style={{ display: 'flex', gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 12, color: COLORS.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Feet</div>
+              <input value={form.heightFt} onChange={e => set('heightFt', e.target.value)} placeholder="5" type="number"
+                style={{ ...S.input, width: '100%', boxSizing: 'border-box' }} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 12, color: COLORS.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Inches</div>
+              <input value={form.heightIn} onChange={e => set('heightIn', e.target.value)} placeholder="10" type="number"
+                style={{ ...S.input, width: '100%', boxSizing: 'border-box' }} />
+            </div>
+          </div>
+        )}
+        <div>
+          <div style={{ fontSize: 12, color: COLORS.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Body weight</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input value={form.weight} onChange={e => set('weight', e.target.value)} placeholder="75" type="number"
+              style={{ ...S.input, flex: 1 }} />
+            <button onClick={() => set('weightUnit', form.weightUnit === 'kg' ? 'lbs' : 'kg')}
+              style={{ ...S.btn, padding: '8px 16px', background: COLORS.input, color: COLORS.accent, fontFamily: "'JetBrains Mono', monospace" }}>
+              {form.weightUnit}
+            </button>
+          </div>
+        </div>
+      </div>
+    ),
+    // 2: Experience
+    () => (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <div style={{ fontSize: 20, fontWeight: 700 }}>Training experience</div>
+        {[
+          { val: 'beginner', label: 'Beginner', sub: 'Less than 1 year' },
+          { val: 'intermediate', label: 'Intermediate', sub: '1–3 years' },
+          { val: 'advanced', label: 'Advanced', sub: '3+ years' },
+        ].map(opt => (
+          <button key={opt.val} onClick={() => set('experience', opt.val)} style={{
+            background: form.experience === opt.val ? COLORS.accent + '1a' : COLORS.input,
+            border: `2px solid ${form.experience === opt.val ? COLORS.accent : COLORS.border}`,
+            borderRadius: 12, padding: '16px 20px', cursor: 'pointer', textAlign: 'left',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          }}>
+            <div>
+              <div style={{ color: form.experience === opt.val ? COLORS.accent : COLORS.text, fontWeight: 700, fontSize: 16 }}>{opt.label}</div>
+              <div style={{ color: COLORS.muted, fontSize: 13, marginTop: 4 }}>{opt.sub}</div>
+            </div>
+            {form.experience === opt.val && <div style={{ color: COLORS.accent, fontSize: 20 }}>✓</div>}
+          </button>
+        ))}
+      </div>
+    ),
+    // 3: Goal
+    () => (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <div style={{ fontSize: 20, fontWeight: 700 }}>Primary goal</div>
+        {[
+          { val: 'muscle', label: 'Muscle Gain', sub: 'Build size and strength' },
+          { val: 'strength', label: 'Strength', sub: 'Maximize lifts and power' },
+          { val: 'fatloss', label: 'Fat Loss', sub: 'Lean out while keeping muscle' },
+          { val: 'fitness', label: 'General Fitness', sub: 'Stay active and healthy' },
+        ].map(opt => (
+          <button key={opt.val} onClick={() => set('goal', opt.val)} style={{
+            background: form.goal === opt.val ? COLORS.accent + '1a' : COLORS.input,
+            border: `2px solid ${form.goal === opt.val ? COLORS.accent : COLORS.border}`,
+            borderRadius: 12, padding: '16px 20px', cursor: 'pointer', textAlign: 'left',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          }}>
+            <div>
+              <div style={{ color: form.goal === opt.val ? COLORS.accent : COLORS.text, fontWeight: 700, fontSize: 16 }}>{opt.label}</div>
+              <div style={{ color: COLORS.muted, fontSize: 13, marginTop: 4 }}>{opt.sub}</div>
+            </div>
+            {form.goal === opt.val && <div style={{ color: COLORS.accent, fontSize: 20 }}>✓</div>}
+          </button>
+        ))}
+      </div>
+    ),
+    // 4: Days/week + Equipment
+    () => (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+        <div style={{ fontSize: 20, fontWeight: 700 }}>Training setup</div>
+        <div>
+          <div style={{ fontSize: 12, color: COLORS.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 12 }}>Days per week</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {['2', '3', '4', '5', '6'].map(d => (
+              <button key={d} onClick={() => set('daysPerWeek', d)} style={{
+                flex: 1, padding: '12px 0',
+                background: form.daysPerWeek === d ? COLORS.accent : COLORS.input,
+                color: form.daysPerWeek === d ? '#000' : COLORS.muted,
+                border: `1px solid ${form.daysPerWeek === d ? COLORS.accent : COLORS.border}`,
+                borderRadius: 8, cursor: 'pointer', fontWeight: 700,
+                fontFamily: "'JetBrains Mono', monospace", fontSize: 16,
+              }}>{d}</button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <div style={{ fontSize: 12, color: COLORS.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 12 }}>Equipment</div>
+          {[
+            { val: 'full', label: 'Full Gym', sub: 'Barbells, machines, cables' },
+            { val: 'home', label: 'Home Gym', sub: 'Rack, barbell, dumbbells' },
+            { val: 'minimal', label: 'Minimal', sub: 'Dumbbells or bodyweight only' },
+          ].map(opt => (
+            <button key={opt.val} onClick={() => set('equipment', opt.val)} style={{
+              width: '100%', marginBottom: 8,
+              background: form.equipment === opt.val ? COLORS.accent + '1a' : COLORS.input,
+              border: `2px solid ${form.equipment === opt.val ? COLORS.accent : COLORS.border}`,
+              borderRadius: 10, padding: '12px 16px', cursor: 'pointer', textAlign: 'left',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            }}>
+              <div>
+                <div style={{ color: form.equipment === opt.val ? COLORS.accent : COLORS.text, fontWeight: 600, fontSize: 15 }}>{opt.label}</div>
+                <div style={{ color: COLORS.muted, fontSize: 12, marginTop: 2 }}>{opt.sub}</div>
+              </div>
+              {form.equipment === opt.val && <div style={{ color: COLORS.accent }}>✓</div>}
+            </button>
+          ))}
+        </div>
+      </div>
+    ),
+    // 5: Units + Done
+    () => (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+        <div style={{ fontSize: 20, fontWeight: 700 }}>Preferred units</div>
+        <div>
+          <div style={{ fontSize: 12, color: COLORS.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 12 }}>Weight in workouts</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {['lbs', 'kg'].map(u => (
+              <button key={u} onClick={() => set('workoutUnit', u)} style={{
+                flex: 1, padding: '14px 0',
+                background: form.workoutUnit === u ? COLORS.accent : COLORS.input,
+                color: form.workoutUnit === u ? '#000' : COLORS.muted,
+                border: `1px solid ${form.workoutUnit === u ? COLORS.accent : COLORS.border}`,
+                borderRadius: 8, cursor: 'pointer', fontWeight: 700,
+                fontFamily: "'JetBrains Mono', monospace", fontSize: 18,
+              }}>{u}</button>
+            ))}
+          </div>
+        </div>
+        <div style={{ ...S.card, textAlign: 'center', padding: 24, background: COLORS.accent + '0d', border: `1px solid ${COLORS.accent}33` }}>
+          <div style={{ fontSize: 28 }}>🔥</div>
+          <div style={{ fontWeight: 700, marginTop: 8 }}>You're all set{form.name ? `, ${form.name}` : ''}!</div>
+          <div style={{ color: COLORS.muted, fontSize: 14, marginTop: 6 }}>FORGE will use your profile to personalize your training plans and coaching advice.</div>
+        </div>
+      </div>
+    ),
+  ]
+
+  const titles = ['Welcome', 'Your Stats', 'Experience', 'Goal', 'Training Setup', 'Units']
+  const isLast = step === steps.length - 1
+  const canAdvance = step === 0 ? form.name.trim().length > 0 : true
+
+  return (
+    <div style={{ ...S.app, minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '24px 20px 40px', maxWidth: 480, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
+        {/* Progress dots */}
+        <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginBottom: 32 }}>
+          {steps.map((_, i) => (
+            <div key={i} style={{
+              width: i === step ? 24 : 8, height: 8, borderRadius: 4,
+              background: i <= step ? COLORS.accent : COLORS.border,
+              transition: 'width 0.3s',
+            }} />
+          ))}
+        </div>
+
+        {steps[step]()}
+      </div>
+
+      <div style={{ padding: '16px 20px', paddingBottom: 'calc(16px + env(safe-area-inset-bottom))', borderTop: `1px solid ${COLORS.border}`, background: COLORS.card, maxWidth: 480, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
+        <div style={{ display: 'flex', gap: 12 }}>
+          {step > 0 && (
+            <button onClick={() => setStep(s => s - 1)} style={{ ...S.btn, flex: '0 0 auto', padding: '14px 20px', background: COLORS.input, color: COLORS.muted }}>← Back</button>
+          )}
+          <button onClick={() => {
+            if (isLast) {
+              saveProfile(form)
+              onComplete(form)
+            } else {
+              setStep(s => s + 1)
+            }
+          }} disabled={!canAdvance} style={{
+            ...S.btn, flex: 1, padding: '14px 0',
+            background: canAdvance ? COLORS.accent : COLORS.border,
+            color: canAdvance ? '#000' : COLORS.muted, fontWeight: 700, fontSize: 16,
+            cursor: canAdvance ? 'pointer' : 'not-allowed',
+          }}>
+            {isLast ? 'Start Training →' : 'Continue →'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── SETTINGS TAB ─────────────────────────────────────────────────────────────
+
+function SettingsTab({ profile, onSave }) {
+  const [form, setForm] = useState(profile ? { ...profile } : {
+    name: '', age: '', heightUnit: 'cm', height: '', heightFt: '', heightIn: '',
+    weight: '', weightUnit: 'kg', workoutUnit: 'lbs',
+    experience: 'intermediate', goal: 'muscle', daysPerWeek: '4', equipment: 'full',
+  })
+  const [saved, setSaved] = useState(false)
+
+  function set(key, val) { setForm(prev => ({ ...prev, [key]: val })) }
+
+  function handleSave() {
+    saveProfile(form)
+    onSave(form)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  const expLabel = { beginner: 'Beginner', intermediate: 'Intermediate', advanced: 'Advanced' }
+  const goalLabel = { muscle: 'Muscle Gain', fatloss: 'Fat Loss', strength: 'Strength', fitness: 'General Fitness' }
+  const equipLabel = { full: 'Full Gym', home: 'Home Gym', minimal: 'Minimal Equipment' }
+
+  function Section({ title, children }) {
+    return (
+      <div style={{ marginBottom: 28 }}>
+        <div style={{ fontSize: 11, color: COLORS.muted, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 12 }}>{title}</div>
+        {children}
+      </div>
+    )
+  }
+
+  function Row({ label, children }) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: `1px solid ${COLORS.border}` }}>
+        <div style={{ color: COLORS.muted, fontSize: 14 }}>{label}</div>
+        <div style={{ flex: '0 0 auto' }}>{children}</div>
+      </div>
+    )
+  }
+
+  function TogglePill({ options, value, onChange }) {
+    return (
+      <div style={{ display: 'flex', background: COLORS.input, borderRadius: 8, padding: 3, gap: 2 }}>
+        {options.map(o => (
+          <button key={o.val} onClick={() => onChange(o.val)} style={{
+            padding: '6px 14px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+            background: value === o.val ? COLORS.accent : 'transparent',
+            color: value === o.val ? '#000' : COLORS.muted,
+          }}>{o.label}</button>
+        ))}
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ padding: '24px 20px 100px', maxWidth: 480, margin: '0 auto' }}>
+      <div style={{ fontWeight: 800, fontSize: 22, marginBottom: 28, letterSpacing: -0.5 }}>Settings</div>
+
+      <Section title="Profile">
+        <Row label="Name">
+          <input value={form.name} onChange={e => set('name', e.target.value)}
+            style={{ ...S.input, textAlign: 'right', padding: '6px 10px', width: 140 }} />
+        </Row>
+        <Row label="Age">
+          <input value={form.age} onChange={e => set('age', e.target.value)} type="number"
+            style={{ ...S.input, textAlign: 'right', padding: '6px 10px', width: 80 }} />
+        </Row>
+        <Row label="Body weight">
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <input value={form.weight} onChange={e => set('weight', e.target.value)} type="number"
+              style={{ ...S.input, textAlign: 'right', padding: '6px 10px', width: 70 }} />
+            <TogglePill options={[{ val: 'kg', label: 'kg' }, { val: 'lbs', label: 'lbs' }]} value={form.weightUnit} onChange={v => set('weightUnit', v)} />
+          </div>
+        </Row>
+        <Row label="Height">
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            {form.heightUnit === 'cm' ? (
+              <input value={form.height} onChange={e => set('height', e.target.value)} type="number"
+                style={{ ...S.input, textAlign: 'right', padding: '6px 10px', width: 70 }} />
+            ) : (
+              <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                <input value={form.heightFt} onChange={e => set('heightFt', e.target.value)} type="number"
+                  style={{ ...S.input, textAlign: 'right', padding: '6px 8px', width: 45 }} />
+                <span style={{ color: COLORS.muted, fontSize: 13 }}>ft</span>
+                <input value={form.heightIn} onChange={e => set('heightIn', e.target.value)} type="number"
+                  style={{ ...S.input, textAlign: 'right', padding: '6px 8px', width: 45 }} />
+                <span style={{ color: COLORS.muted, fontSize: 13 }}>in</span>
+              </div>
+            )}
+            <TogglePill options={[{ val: 'cm', label: 'cm' }, { val: 'ft', label: 'ft' }]} value={form.heightUnit} onChange={v => set('heightUnit', v)} />
+          </div>
+        </Row>
+      </Section>
+
+      <Section title="Training">
+        <Row label="Experience">
+          <TogglePill
+            options={[{ val: 'beginner', label: 'Beg' }, { val: 'intermediate', label: 'Int' }, { val: 'advanced', label: 'Adv' }]}
+            value={form.experience} onChange={v => set('experience', v)} />
+        </Row>
+        <Row label="Goal">
+          <select value={form.goal} onChange={e => set('goal', e.target.value)}
+            style={{ ...S.input, padding: '6px 10px', fontSize: 13 }}>
+            <option value="muscle">Muscle Gain</option>
+            <option value="strength">Strength</option>
+            <option value="fatloss">Fat Loss</option>
+            <option value="fitness">General Fitness</option>
+          </select>
+        </Row>
+        <Row label="Days / week">
+          <TogglePill
+            options={['2','3','4','5','6'].map(d => ({ val: d, label: d }))}
+            value={form.daysPerWeek} onChange={v => set('daysPerWeek', v)} />
+        </Row>
+        <Row label="Equipment">
+          <select value={form.equipment} onChange={e => set('equipment', e.target.value)}
+            style={{ ...S.input, padding: '6px 10px', fontSize: 13 }}>
+            <option value="full">Full Gym</option>
+            <option value="home">Home Gym</option>
+            <option value="minimal">Minimal</option>
+          </select>
+        </Row>
+      </Section>
+
+      <Section title="Units">
+        <Row label="Workout weight">
+          <TogglePill options={[{ val: 'lbs', label: 'lbs' }, { val: 'kg', label: 'kg' }]} value={form.workoutUnit} onChange={v => set('workoutUnit', v)} />
+        </Row>
+      </Section>
+
+      <button onClick={handleSave} style={{
+        ...S.btn, width: '100%', padding: '16px 0', marginTop: 8,
+        background: saved ? COLORS.success : COLORS.accent, color: '#000', fontWeight: 700, fontSize: 16,
+      }}>
+        {saved ? '✓ Saved' : 'Save Changes'}
+      </button>
+    </div>
+  )
+}
+
 // ─── BOTTOM NAV ───────────────────────────────────────────────────────────────
 
 function BottomNav({ tab, setTab }) {
@@ -516,6 +947,7 @@ function BottomNav({ tab, setTab }) {
     { id: 'plan', label: 'Plan', icon: '📋' },
     { id: 'coach', label: 'Coach', icon: '🧠' },
     { id: 'history', label: 'History', icon: '📈' },
+    { id: 'settings', label: 'Settings', icon: '⚙️' },
   ]
   return (
     <div style={{
@@ -1705,7 +2137,7 @@ function LogTab({ workouts, savedPlans, aiCycle, onQuickStart, onStartPlan, onSt
 
 // ─── PLAN TAB ─────────────────────────────────────────────────────────────────
 
-function PlanTab({ aiCycle, workouts, onCycleGenerated }) {
+function PlanTab({ aiCycle, workouts, onCycleGenerated, profile }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [week1Open, setWeek1Open] = useState(true)
@@ -1714,7 +2146,7 @@ function PlanTab({ aiCycle, workouts, onCycleGenerated }) {
   async function generate() {
     setLoading(true); setError(null)
     try {
-      const text = await callAnthropic([{ role: 'user', content: buildCyclePrompt(workouts) }], 4000)
+      const text = await callAnthropic([{ role: 'user', content: buildCyclePrompt(workouts, profile) }], 4000)
       const cycle = parseCycleResponse(text)
       if (!cycle) throw new Error('Failed to parse AI response. Try again.')
       onCycleGenerated({ ...cycle, generatedAt: new Date().toISOString() })
@@ -1828,7 +2260,7 @@ const QUICK_QUESTIONS = [
   'How is my bench progressing?',
 ]
 
-function CoachTab({ workouts, aiCycle, chatHistory, onChatUpdate }) {
+function CoachTab({ workouts, aiCycle, chatHistory, onChatUpdate, profile }) {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const bottomRef = useRef(null)
@@ -1843,7 +2275,7 @@ function CoachTab({ workouts, aiCycle, chatHistory, onChatUpdate }) {
     setInput('')
     setLoading(true)
     try {
-      const response = await callAnthropic(newHistory, 1024, buildCoachSystemPrompt(workouts, aiCycle))
+      const response = await callAnthropic(newHistory, 1024, buildCoachSystemPrompt(workouts, aiCycle, profile))
       onChatUpdate([...newHistory, { role: 'assistant', content: response }])
     } catch (e) {
       onChatUpdate([...newHistory, { role: 'assistant', content: `Error: ${e.message}` }])
@@ -2015,6 +2447,7 @@ export default function App() {
   }, [])
 
   const initial = loadForge()
+  const [profile, setProfile] = useState(() => loadProfile())
   const [tab, setTab] = useState('log')
   const [activeScreen, setActiveScreen] = useState('home')
   const [workouts, setWorkouts] = useState(initial.workouts)
@@ -2054,7 +2487,8 @@ export default function App() {
   }
 
   function handleQuickStart(type, sessionName, templates) {
-    setActiveSession({ name: sessionName || type, startedAt: new Date().toISOString(), exerciseIndex: 0, exercises: templates.map(t => makeExercise(t, workouts)) })
+    const unit = profile?.workoutUnit || 'lbs'
+    setActiveSession({ name: sessionName || type, startedAt: new Date().toISOString(), exerciseIndex: 0, exercises: templates.map(t => makeExercise(t, workouts, unit)) })
     setActiveScreen('activeWorkout')
   }
 
@@ -2070,16 +2504,18 @@ export default function App() {
   }
 
   function handleStartPlan(plan) {
-    setActiveSession({ name: plan.name, startedAt: new Date().toISOString(), exerciseIndex: 0, exercises: plan.exercises.map(t => makeExercise(t, workouts)) })
+    const unit = profile?.workoutUnit || 'lbs'
+    setActiveSession({ name: plan.name, startedAt: new Date().toISOString(), exerciseIndex: 0, exercises: plan.exercises.map(t => makeExercise(t, workouts, unit)) })
     setActiveScreen('sessionSetup')
   }
 
   function handleStartCycleDay(day) {
+    const unit = profile?.workoutUnit || 'lbs'
     const exercises = (day.exercises || []).map(ex => makeExercise({
       name: ex.name, muscle: ex.muscle || 'Other', sets: ex.sets || 3,
       repsMin: ex.repsMin || 8, repsMax: ex.repsMax || 12, restSec: ex.restSec || 90,
       targetWeight: ex.targetWeight || null, note: ex.note || '',
-    }, workouts))
+    }, workouts, unit))
     setActiveSession({ name: `${day.dayLabel} — ${day.focus}`, startedAt: new Date().toISOString(), exerciseIndex: 0, exercises })
     setActiveScreen('sessionSetup')
   }
@@ -2157,6 +2593,10 @@ export default function App() {
     persist({ chatHistory: history })
   }
 
+  if (!profile) {
+    return <OnboardingScreen onComplete={p => setProfile(p)} />
+  }
+
   if (pendingResume && pendingResume.session) {
     return (
       <div style={S.app}>
@@ -2208,12 +2648,13 @@ export default function App() {
             customQuickStarts={customQuickStarts} onSaveQuickStart={handleSaveQuickStart} />
         )}
         {tab === 'plan' && (
-          <PlanTab aiCycle={aiCycle} workouts={workouts} onCycleGenerated={handleCycleGenerated} />
+          <PlanTab aiCycle={aiCycle} workouts={workouts} onCycleGenerated={handleCycleGenerated} profile={profile} />
         )}
         {tab === 'coach' && (
-          <CoachTab workouts={workouts} aiCycle={aiCycle} chatHistory={chatHistory} onChatUpdate={handleChatUpdate} />
+          <CoachTab workouts={workouts} aiCycle={aiCycle} chatHistory={chatHistory} onChatUpdate={handleChatUpdate} profile={profile} />
         )}
         {tab === 'history' && <HistoryTab workouts={workouts} />}
+        {tab === 'settings' && <SettingsTab profile={profile} onSave={p => setProfile(p)} />}
       </div>
 
       <BottomNav tab={tab} setTab={setTab} />
