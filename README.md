@@ -12,9 +12,10 @@ FORGE is a personal workout tracker designed around a 4-day training split (Ches
 
 - **Log workouts** — track sets, reps, weight (lbs or kg), RPE, drop sets, and notes per set
 - **Pre-fills last weight** — every exercise starts with the weight you used last session
-- **Rest timer** — 5-second get-ready countdown + circular ring that drains over your rest period, wall-clock accurate when backgrounded
-- **Timer notifications** — fires a push notification when rest ends, even if the app is in the background (Android/iOS 16.4+)
+- **Rest timer** — circular ring timer that starts immediately after logging a set, wall-clock accurate when backgrounded
+- **Timer notifications** — fires a push notification when rest ends, even if the app is in the background (iOS 16.4+)
 - **Session persistence** — active workout is saved to localStorage on every change; if the app closes mid-session, it prompts to resume on reopen
+- **Customizable quick starts** — edit the name, muscle groups, exercise list, and rest times for each split; changes persist as your new defaults
 - **AI training cycle** — generates a personalized 2-week plan based on your workout history
 - **AI coach chat** — context-aware assistant that knows your actual numbers and flags overtraining
 - **Session history** — full log of every workout with volume and duration stats
@@ -97,7 +98,7 @@ Open `http://localhost:5173`.
 ## Tabs
 
 ### Log
-Home screen. Shows today's date, weekly stats, and quick-start buttons for each muscle group. If an AI cycle is active, shows a progress bar and the current week's days. Saved plans appear here too.
+Home screen. Shows today's date, weekly stats, and quick-start buttons for each muscle group. Tap any quick-start card to preview, edit, and launch that workout. If an AI cycle is active, shows a progress bar and the current week's days. Saved plans appear here too.
 
 ### Plan
 AI-generated 2-week training cycle. Hit **Generate AI Plan** to create one — it reads your last 10 sessions and returns a structured JSON plan with target weights, rep ranges, rest times, and a coach note. Refresh anytime to regenerate.
@@ -117,23 +118,38 @@ All logged sessions, newest first. Tap any session to see the full set-by-set br
 
 ## Active workout flow
 
-1. Tap a quick-start button (e.g. **Chest**) or start a saved plan
-2. Review and adjust the exercise queue on the setup screen — reorder with ↑↓, swap any exercise, or edit sets/reps/weight targets
-3. Tap **▶ Start Workout** — the app goes fullscreen
-4. Log each set: enter weight and reps, optionally set RPE or add a drop set
-5. Tap **✓ Set Done** — a 5-second get-ready countdown plays, then the rest timer starts
-6. The rest timer uses wall-clock timestamps so it stays accurate when backgrounded. Skip or add +15 seconds as needed
-7. After the last set of the last exercise, the session is saved automatically
+1. Tap a quick-start card (e.g. **Chest**) — a sheet opens showing the exercise list
+2. Preview and adjust: drag to reorder, tap a name to rename, change rest times, add or remove exercises
+3. Optionally tap **Save** to persist your changes as the new default for that split
+4. Tap **▶ Start Workout** — the app goes fullscreen immediately
+5. Log each set: enter weight and reps, optionally set RPE or add a drop set
+6. Tap **✓ Set Done** — the rest timer starts instantly
+7. The rest timer uses wall-clock timestamps so it stays accurate when backgrounded. Skip or add +15 seconds as needed
+8. After the last set of the last exercise, the session is saved automatically
 
 **If the app closes mid-workout**, reopening it shows a Resume/Discard prompt to pick up exactly where you left off.
 
 ---
 
+## Quick start customization
+
+Each quick-start slot (Chest, Back + Biceps, etc.) is fully customizable:
+
+- **Workout name** — rename it (e.g. "Chest + Triceps")
+- **Muscle groups** — add or remove muscles; exercise suggestions update in real time
+- **Exercise list** — drag to reorder, rename with auto-suggestions, change rest time per exercise, delete, or add new ones
+- **Save** — persists as your new default for that slot
+- **Reset** — restores the original hardcoded list
+
+Custom names and muscle groups are reflected on the home screen cards.
+
+---
+
 ## Exercise management
 
-### Setup screen (before workout)
+### During session setup
 Each exercise card has:
-- **↑ ↓** — reorder within the queue
+- **≡** — drag handle to reorder
 - **⇄ Swap** — replace with any other exercise (filtered by muscle group, with search)
 - **✎ Edit** — customize sets, rep range, starting weight, and notes (saved as defaults for future sessions)
 - **✕** — remove from queue
@@ -141,7 +157,7 @@ Each exercise card has:
 ### During workout
 - **⇄ Swap** button in the exercise header to replace the current exercise on the fly
 - **+ Set / − Set** buttons to add or remove sets (minimum 1)
-- **↑ ↓** reorder buttons in the session plan sheet (tap the **≡** pill at the bottom)
+- **↑ ↓** reorder buttons in the session plan sheet
 
 ---
 
@@ -164,6 +180,8 @@ The exercise picker has a search bar, muscle group filter chips, and a custom ex
 | Full Body | Chest, Back, Legs, Shoulders |
 | Open Workout | No preset exercises |
 
+All splits are fully customizable and persist per device.
+
 ---
 
 ## Storage
@@ -172,7 +190,7 @@ All data is persisted to `localStorage` across sessions.
 
 | Key | Contents |
 |---|---|
-| `forge_data` | Workout history, saved plans, AI cycle, chat history |
+| `forge_data` | Workout history, saved plans, AI cycle, chat history, custom quick starts |
 | `forge_active_workout` | In-progress session + rest timer state |
 | `forge_exercise_defaults` | Per-exercise customizations (sets, reps, weight, notes) |
 
@@ -183,7 +201,14 @@ Data shape for `forge_data`:
   "workouts": [...],
   "savedPlans": [...],
   "aiCycle": { ... },
-  "chatHistory": [...]
+  "chatHistory": [...],
+  "customQuickStarts": {
+    "Chest": {
+      "name": "Chest + Triceps",
+      "muscles": ["Chest", "Triceps"],
+      "exercises": [...]
+    }
+  }
 }
 ```
 
