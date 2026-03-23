@@ -917,37 +917,23 @@ function RestTimerOverlay({ phase, secondsLeft, totalSeconds, onSkip, onAdd15 })
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 32,
     }}>
       <div style={{ color: COLORS.muted, fontSize: 13, fontWeight: 600, letterSpacing: 2, textTransform: 'uppercase' }}>
-        {phase === 'getReady' ? 'GET READY' : 'REST'}
+        REST
       </div>
       <div style={{ position: 'relative', width: 140, height: 140 }}>
-        {phase === 'resting' ? (
-          <>
-            <svg width="140" height="140" style={{ transform: 'rotate(-90deg)' }}>
-              <circle cx="70" cy="70" r={RING_RADIUS} fill="none" stroke={COLORS.border} strokeWidth="8" />
-              <circle cx="70" cy="70" r={RING_RADIUS} fill="none" stroke={ringColor} strokeWidth="8"
-                strokeDasharray={RING_CIRC} strokeDashoffset={offset} strokeLinecap="round"
-                style={{ transition: 'stroke-dashoffset 1s linear, stroke 0.5s' }} />
-            </svg>
-            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <span style={{ ...S.mono, fontSize: 36, fontWeight: 700 }}>{formatTime(secondsLeft)}</span>
-            </div>
-          </>
-        ) : (
-          <div style={{
-            width: 140, height: 140, borderRadius: '50%',
-            border: `4px solid ${COLORS.accent}`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <span style={{ ...S.mono, fontSize: 64, fontWeight: 700, color: COLORS.accent }}>{secondsLeft}</span>
-          </div>
-        )}
-      </div>
-      {phase === 'resting' && (
-        <div style={{ display: 'flex', gap: 12 }}>
-          <Btn onClick={onSkip} style={{ padding: '12px 24px' }}>Skip Rest →</Btn>
-          <Btn onClick={onAdd15} style={{ padding: '12px 24px' }}>+15s</Btn>
+        <svg width="140" height="140" style={{ transform: 'rotate(-90deg)' }}>
+          <circle cx="70" cy="70" r={RING_RADIUS} fill="none" stroke={COLORS.border} strokeWidth="8" />
+          <circle cx="70" cy="70" r={RING_RADIUS} fill="none" stroke={ringColor} strokeWidth="8"
+            strokeDasharray={RING_CIRC} strokeDashoffset={offset} strokeLinecap="round"
+            style={{ transition: 'stroke-dashoffset 1s linear, stroke 0.5s' }} />
+        </svg>
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <span style={{ ...S.mono, fontSize: 36, fontWeight: 700 }}>{formatTime(secondsLeft)}</span>
         </div>
-      )}
+      </div>
+      <div style={{ display: 'flex', gap: 12 }}>
+        <Btn onClick={onSkip} style={{ padding: '12px 24px' }}>Skip Rest →</Btn>
+        <Btn onClick={onAdd15} style={{ padding: '12px 24px' }}>+15s</Btn>
+      </div>
     </div>
   )
 }
@@ -1045,9 +1031,7 @@ function ActiveWorkoutScreen({ session, onUpdate, onEnd, workouts = [], restTime
     if (restTimer.phase === 'idle' || !restTimer.startedAt) return
     const remaining = restTimer.durationMs - (Date.now() - restTimer.startedAt)
     if (remaining > 0) return
-    if (restTimer.phase === 'getReady') {
-      setRestTimer({ phase: 'resting', startedAt: Date.now(), durationMs: restTimer.targetRestSec * 1000, targetRestSec: restTimer.targetRestSec })
-    } else if (restTimer.phase === 'resting') {
+    if (restTimer.phase === 'resting') {
       setRestTimer({ phase: 'idle', startedAt: null, durationMs: 0, targetRestSec: 0 })
       playBeep()
       fireNotification()
@@ -1061,7 +1045,7 @@ function ActiveWorkoutScreen({ session, onUpdate, onEnd, workouts = [], restTime
   const timerTotalSeconds = Math.round(restTimer.durationMs / 1000)
 
   function startRestTimer(restSec) {
-    setRestTimer({ phase: 'getReady', startedAt: Date.now(), durationMs: 5000, targetRestSec: restSec })
+    setRestTimer({ phase: 'resting', startedAt: Date.now(), durationMs: restSec * 1000, targetRestSec: restSec })
   }
 
   function skipRest() {
@@ -1320,9 +1304,279 @@ function ActiveWorkoutScreen({ session, onUpdate, onEnd, workouts = [], restTime
   )
 }
 
+// ─── QUICK START SHEET ────────────────────────────────────────────────────────
+
+function QuickStartSheet({ type, name: initialName, muscles: initialMuscles, exercises: initialExercises, onStart, onSave, onReset, onClose }) {
+  const [customName, setCustomName] = useState(initialName)
+  const [muscles, setMuscles] = useState(initialMuscles)
+  const [showMusclePicker, setShowMusclePicker] = useState(false)
+  const [exercises, setExercises] = useState(() => initialExercises.map(ex => ({ ...ex, _id: uuid() })))
+  const [editingIdx, setEditingIdx] = useState(null)
+  const [renameValue, setRenameValue] = useState('')
+  const [showPicker, setShowPicker] = useState(false)
+  const [dragVisual, setDragVisual] = useState(null)
+  const dragRef = useRef(null)
+  const overIdxRef = useRef(null)
+  const exercisesRef = useRef(exercises)
+  exercisesRef.current = exercises
+
+  const ITEM_H = 130
+
+  const availableMuscles = MUSCLES.filter(m => !muscles.includes(m))
+  const suggestions = [...new Set(
+    muscles.length > 0
+      ? muscles.flatMap(m => EXERCISE_LIBRARY[m] || [])
+      : ALL_EXERCISES.map(e => e.name)
+  )]
+
+  function startRename(idx) {
+    setEditingIdx(idx)
+    setRenameValue(exercises[idx].name)
+  }
+
+  function commitRename(name) {
+    if (name.trim()) {
+      setExercises(prev => prev.map((ex, i) => i === editingIdx ? { ...ex, name: name.trim() } : ex))
+    }
+    setEditingIdx(null)
+    setRenameValue('')
+  }
+
+  function onHandleTouchStart(idx, e) {
+    if (editingIdx !== null) return
+    e.stopPropagation()
+    const touch = e.touches[0]
+    dragRef.current = { idx, startY: touch.clientY }
+    overIdxRef.current = idx
+    setDragVisual({ idx, offsetY: 0, overIdx: idx })
+
+    function onMove(e2) {
+      if (!dragRef.current) return
+      e2.preventDefault()
+      const t = e2.touches[0]
+      const offsetY = t.clientY - dragRef.current.startY
+      const n = exercisesRef.current.length
+      const newOver = Math.max(0, Math.min(n - 1, Math.round(dragRef.current.idx + offsetY / ITEM_H)))
+      overIdxRef.current = newOver
+      setDragVisual({ idx: dragRef.current.idx, offsetY, overIdx: newOver })
+    }
+
+    function onEnd() {
+      if (dragRef.current) {
+        const from = dragRef.current.idx
+        const to = overIdxRef.current ?? from
+        if (from !== to) {
+          setExercises(prev => {
+            const a = [...prev]
+            const [removed] = a.splice(from, 1)
+            a.splice(to, 0, removed)
+            return a
+          })
+        }
+      }
+      document.removeEventListener('touchmove', onMove)
+      document.removeEventListener('touchend', onEnd)
+      dragRef.current = null
+      overIdxRef.current = null
+      setDragVisual(null)
+    }
+
+    document.addEventListener('touchmove', onMove, { passive: false })
+    document.addEventListener('touchend', onEnd)
+  }
+
+  const payload = () => ({ name: customName, muscles, exercises: exercises.map(({ _id, ...rest }) => rest) })
+
+  if (showPicker) return (
+    <ExercisePickerSheet
+      onPick={e => {
+        setExercises(prev => [...prev, { name: e.name, muscle: e.muscle, sets: 3, repsMin: 8, repsMax: 12, restSec: 90, _id: uuid() }])
+        setShowPicker(false)
+      }}
+      onClose={() => setShowPicker(false)}
+    />
+  )
+
+  return (
+    <BottomSheet title={type} onClose={onClose} height="92vh">
+      <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+
+        {/* Scrollable list */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px 0', WebkitOverflowScrolling: 'touch' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingBottom: 12 }}>
+
+            {/* Name + Muscles */}
+            <div style={{ ...S.card, gap: 10, display: 'flex', flexDirection: 'column' }}>
+              <div>
+                <div style={{ color: COLORS.muted, fontSize: 10, letterSpacing: 1, marginBottom: 6 }}>WORKOUT NAME</div>
+                <input
+                  value={customName}
+                  onChange={e => setCustomName(e.target.value)}
+                  style={{ ...S.input, fontWeight: 700, fontSize: 15 }}
+                />
+              </div>
+              <div>
+                <div style={{ color: COLORS.muted, fontSize: 10, letterSpacing: 1, marginBottom: 6 }}>MUSCLE GROUPS</div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                  {muscles.map(m => (
+                    <span key={m} style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                      padding: '4px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600,
+                      background: COLORS.accent + '22', color: COLORS.accent,
+                      border: `1px solid ${COLORS.accent}44`,
+                    }}>
+                      {m}
+                      <button onClick={() => setMuscles(prev => prev.filter(x => x !== m))} style={{
+                        background: 'none', border: 'none', color: COLORS.accent,
+                        cursor: 'pointer', fontSize: 13, padding: 0, lineHeight: 1,
+                      }}>✕</button>
+                    </span>
+                  ))}
+                  {availableMuscles.length > 0 && (
+                    <button onClick={() => setShowMusclePicker(p => !p)} style={{
+                      padding: '4px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600,
+                      background: COLORS.input, color: COLORS.muted,
+                      border: `1px solid ${showMusclePicker ? COLORS.accent : COLORS.border}`,
+                      cursor: 'pointer', fontFamily: "'Sora', sans-serif",
+                    }}>+ Add</button>
+                  )}
+                </div>
+                {showMusclePicker && (
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+                    {availableMuscles.map(m => (
+                      <button key={m} onClick={() => { setMuscles(prev => [...prev, m]); setShowMusclePicker(false) }} style={{
+                        padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600,
+                        background: COLORS.input, color: COLORS.text,
+                        border: `1px solid ${COLORS.border}`,
+                        cursor: 'pointer', fontFamily: "'Sora', sans-serif",
+                      }}>{m}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            {exercises.map((ex, idx) => {
+              const isDragging = dragVisual?.idx === idx
+              const isTarget = dragVisual && dragVisual.overIdx === idx && dragVisual.idx !== idx
+              let shiftY = 0
+              if (dragVisual && !isDragging) {
+                const { idx: di, overIdx: oi } = dragVisual
+                if (di < oi && idx > di && idx <= oi) shiftY = -ITEM_H
+                else if (di > oi && idx >= oi && idx < di) shiftY = ITEM_H
+              }
+              return (
+                <div key={ex._id} style={{
+                  ...S.card,
+                  border: `1px solid ${isTarget ? COLORS.accent : COLORS.border}`,
+                  transform: isDragging ? `translateY(${dragVisual.offsetY}px)` : shiftY !== 0 ? `translateY(${shiftY}px)` : 'none',
+                  transition: isDragging ? 'none' : 'transform 0.15s',
+                  opacity: isDragging ? 0.85 : 1,
+                  position: 'relative', zIndex: isDragging ? 10 : 1,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                    <div
+                      onTouchStart={e => onHandleTouchStart(idx, e)}
+                      style={{ color: COLORS.muted, fontSize: 18, cursor: 'grab', padding: '3px 2px', touchAction: 'none', flexShrink: 0, userSelect: 'none', WebkitUserSelect: 'none', lineHeight: 1.4 }}
+                    >≡</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      {editingIdx === idx ? (
+                        <div>
+                          <input autoFocus value={renameValue}
+                            onChange={e => setRenameValue(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') commitRename(renameValue) }}
+                            style={{ ...S.input, fontSize: 14, marginBottom: 8 }}
+                          />
+                          {suggestions.filter(s => s.toLowerCase().includes(renameValue.toLowerCase()) && s.toLowerCase() !== renameValue.toLowerCase()).slice(0, 8).length > 0 && (
+                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+                              {suggestions.filter(s => s.toLowerCase().includes(renameValue.toLowerCase()) && s.toLowerCase() !== renameValue.toLowerCase()).slice(0, 8).map(s => (
+                                <button key={s} onClick={() => commitRename(s)} style={{
+                                  padding: '4px 10px', borderRadius: 12, border: `1px solid ${COLORS.border}`,
+                                  background: COLORS.input, color: COLORS.text, cursor: 'pointer',
+                                  fontSize: 11, fontWeight: 600, fontFamily: "'Sora', sans-serif",
+                                }}>{s}</button>
+                              ))}
+                            </div>
+                          )}
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <Btn onClick={() => setEditingIdx(null)} style={{ flex: 1, padding: '8px' }}>Cancel</Btn>
+                            <Btn variant="accent" onClick={() => commitRename(renameValue)} style={{ flex: 1, padding: '8px' }}>OK</Btn>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <button onClick={() => startRename(idx)} style={{
+                            background: 'none', border: 'none', color: COLORS.text, fontWeight: 600,
+                            fontSize: 14, cursor: 'pointer', textAlign: 'left', padding: 0,
+                            fontFamily: "'Sora', sans-serif",
+                          }}>
+                            {ex.name} <span style={{ color: COLORS.muted, fontSize: 11 }}>✎</span>
+                          </button>
+                          <div style={{ color: COLORS.muted, fontSize: 11, marginTop: 2 }}>{ex.muscle}</div>
+                        </>
+                      )}
+                    </div>
+                    {editingIdx !== idx && (
+                      <button onClick={() => setExercises(prev => prev.filter((_, i) => i !== idx))}
+                        style={{ background: 'none', border: 'none', color: COLORS.danger, cursor: 'pointer', fontSize: 18, flexShrink: 0, padding: '2px 4px' }}>✕</button>
+                    )}
+                  </div>
+                  {editingIdx !== idx && (
+                    <div style={{ marginTop: 10 }}>
+                      <div style={{ color: COLORS.muted, fontSize: 10, letterSpacing: 1, marginBottom: 6 }}>REST</div>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        {REST_CHIPS.map(c => (
+                          <button key={c.sec}
+                            onClick={() => setExercises(prev => prev.map((x, i) => i === idx ? { ...x, restSec: c.sec } : x))}
+                            style={{
+                              padding: '4px 10px', borderRadius: 20,
+                              border: `1px solid ${ex.restSec === c.sec ? COLORS.accent : COLORS.border}`,
+                              background: ex.restSec === c.sec ? COLORS.accent + '22' : COLORS.input,
+                              color: ex.restSec === c.sec ? COLORS.accent : COLORS.muted,
+                              cursor: 'pointer', fontSize: 11, fontWeight: 600, fontFamily: "'Sora', sans-serif",
+                            }}>{c.label}</button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+            <button onClick={() => setShowPicker(true)} style={{
+              background: 'none', border: `1px dashed ${COLORS.border}`, borderRadius: 10,
+              color: COLORS.muted, cursor: 'pointer', padding: '12px', width: '100%',
+              fontSize: 13, fontWeight: 600, fontFamily: "'Sora', sans-serif",
+            }}>+ Add Exercise</button>
+          </div>
+        </div>
+
+        {/* Fixed bottom actions */}
+        <div style={{ flexShrink: 0, borderTop: `1px solid ${COLORS.border}`, padding: '12px 16px', paddingBottom: 'calc(12px + env(safe-area-inset-bottom))' }}>
+          <Btn variant="accent" disabled={exercises.length === 0} onClick={() => onStart(customName, payload().exercises)}
+            style={{ width: '100%', padding: '15px', fontSize: 16, marginBottom: 8 }}>
+            ▶ Start Workout
+          </Btn>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Btn onClick={() => onSave(payload())} style={{ flex: 1, padding: '10px', fontSize: 13 }}>Save</Btn>
+            <Btn onClick={onReset} style={{ flex: 1, padding: '10px', fontSize: 13 }}>Reset</Btn>
+          </div>
+        </div>
+
+      </div>
+    </BottomSheet>
+  )
+}
+
+function getCustomQuickStart(customQuickStarts, type) {
+  const v = customQuickStarts[type]
+  if (!v) return null
+  if (Array.isArray(v)) return { name: type, muscles: QUICK_START_MUSCLES[type] || [], exercises: v }
+  return v
+}
+
 // ─── LOG TAB ──────────────────────────────────────────────────────────────────
 
-function LogTab({ workouts, savedPlans, aiCycle, onQuickStart, onStartPlan, onStartCycleDay, onBuildPlan, onDeletePlan }) {
+function LogTab({ workouts, savedPlans, aiCycle, onQuickStart, onStartPlan, onStartCycleDay, onBuildPlan, onDeletePlan, customQuickStarts, onSaveQuickStart }) {
+  const [showSheet, setShowSheet] = useState(null)
   const now = new Date()
   const sessionsThisWeek = workouts.filter(w => isWithin7Days(w.startedAt)).length
 
@@ -1333,6 +1587,7 @@ function LogTab({ workouts, savedPlans, aiCycle, onQuickStart, onStartPlan, onSt
   }
 
   return (
+  <>
     <div style={{ padding: '60px 16px 100px' }}>
       <div style={{ marginBottom: 20 }}>
         <div style={{ color: COLORS.muted, fontSize: 13, marginBottom: 4 }}>
@@ -1372,14 +1627,20 @@ function LogTab({ workouts, savedPlans, aiCycle, onQuickStart, onStartPlan, onSt
       <div style={{ marginBottom: 24 }}>
         <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>Quick Start</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          {QUICK_START_TYPES.map(type => (
-            <button key={type} onClick={() => onQuickStart(type)} style={{ ...S.card, cursor: 'pointer', textAlign: 'left', padding: '14px 16px' }}>
-              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4, color: COLORS.accent }}>{type}</div>
-              <div style={{ color: COLORS.muted, fontSize: 11 }}>
-                {QUICK_START_MUSCLES[type].slice(0, 2).join(' · ') || 'Custom'}
+          {QUICK_START_TYPES.map(type => {
+            const custom = getCustomQuickStart(customQuickStarts, type)
+            const displayName = custom?.name || type
+            const displayMuscles = custom?.muscles || QUICK_START_MUSCLES[type] || []
+            return (
+              <div key={type} onClick={() => setShowSheet(type)}
+                style={{ ...S.card, cursor: 'pointer', textAlign: 'left', padding: '14px 16px' }}>
+                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4, color: COLORS.accent }}>{displayName}</div>
+                <div style={{ color: COLORS.muted, fontSize: 11 }}>
+                  {displayMuscles.slice(0, 2).join(' · ') || 'Custom'}
+                </div>
               </div>
-            </button>
-          ))}
+            )
+          })}
         </div>
       </div>
 
@@ -1423,6 +1684,22 @@ function LogTab({ workouts, savedPlans, aiCycle, onQuickStart, onStartPlan, onSt
 
       <Btn onClick={onBuildPlan} style={{ width: '100%' }}>+ Build Plan</Btn>
     </div>
+    {showSheet && (() => {
+      const custom = getCustomQuickStart(customQuickStarts, showSheet)
+      return (
+        <QuickStartSheet
+          type={showSheet}
+          name={custom?.name || showSheet}
+          muscles={custom?.muscles || QUICK_START_MUSCLES[showSheet] || []}
+          exercises={custom?.exercises || QUICK_START_EXERCISES[showSheet] || []}
+          onStart={(sessionName, templates) => { onQuickStart(showSheet, sessionName, templates); setShowSheet(null) }}
+          onSave={data => { onSaveQuickStart(showSheet, data) }}
+          onReset={() => { onSaveQuickStart(showSheet, null) }}
+          onClose={() => setShowSheet(null)}
+        />
+      )
+    })()}
+  </>
   )
 }
 
@@ -1744,6 +2021,7 @@ export default function App() {
   const [savedPlans, setSavedPlans] = useState(initial.savedPlans)
   const [aiCycle, setAiCycle] = useState(initial.aiCycle)
   const [chatHistory, setChatHistory] = useState(initial.chatHistory)
+  const [customQuickStarts, setCustomQuickStarts] = useState(initial.customQuickStarts || {})
   const [activeSession, setActiveSession] = useState(null)
   const [restTimer, setRestTimer] = useState({ phase: 'idle', startedAt: null, durationMs: 0, targetRestSec: 0 })
   const [showPlanBuilder, setShowPlanBuilder] = useState(false)
@@ -1772,13 +2050,23 @@ export default function App() {
   }, [activeSession, restTimer])
 
   function persist(updates = {}) {
-    saveForge({ workouts, savedPlans, aiCycle, chatHistory, ...updates })
+    saveForge({ workouts, savedPlans, aiCycle, chatHistory, customQuickStarts, ...updates })
   }
 
-  function handleQuickStart(type) {
-    const templates = QUICK_START_EXERCISES[type] || []
-    setActiveSession({ name: type, startedAt: new Date().toISOString(), exerciseIndex: 0, exercises: templates.map(t => makeExercise(t, workouts)) })
-    setActiveScreen('sessionSetup')
+  function handleQuickStart(type, sessionName, templates) {
+    setActiveSession({ name: sessionName || type, startedAt: new Date().toISOString(), exerciseIndex: 0, exercises: templates.map(t => makeExercise(t, workouts)) })
+    setActiveScreen('activeWorkout')
+  }
+
+  function handleSaveQuickStart(type, data) {
+    const newCustom = { ...customQuickStarts }
+    if (data === null) {
+      delete newCustom[type]
+    } else {
+      newCustom[type] = data
+    }
+    setCustomQuickStarts(newCustom)
+    persist({ customQuickStarts: newCustom })
   }
 
   function handleStartPlan(plan) {
@@ -1916,7 +2204,8 @@ export default function App() {
           <LogTab workouts={workouts} savedPlans={savedPlans} aiCycle={aiCycle}
             onQuickStart={handleQuickStart} onStartPlan={handleStartPlan}
             onStartCycleDay={handleStartCycleDay} onBuildPlan={() => setShowPlanBuilder(true)}
-            onDeletePlan={handleDeletePlan} />
+            onDeletePlan={handleDeletePlan}
+            customQuickStarts={customQuickStarts} onSaveQuickStart={handleSaveQuickStart} />
         )}
         {tab === 'plan' && (
           <PlanTab aiCycle={aiCycle} workouts={workouts} onCycleGenerated={handleCycleGenerated} />
