@@ -499,7 +499,12 @@ Return ONLY valid JSON with no markdown fences, no comments, no explanation. Use
 
 function parseCycleResponse(text) {
   try {
-    const clean = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+    // Strip markdown fences
+    let clean = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+    // Extract the outermost JSON object in case there's surrounding text
+    const start = clean.indexOf('{')
+    const end = clean.lastIndexOf('}')
+    if (start !== -1 && end !== -1) clean = clean.slice(start, end + 1)
     return JSON.parse(clean)
   } catch (_) {
     return null
@@ -2355,7 +2360,11 @@ function PlanTab({ aiCycle, workouts, onCycleGenerated, profile }) {
   async function generate() {
     setLoading(true); setError(null)
     try {
-      const text = await callAnthropic([{ role: 'user', content: buildCyclePrompt(workouts, profile) }], 4000)
+      const text = await callAnthropic(
+        [{ role: 'user', content: buildCyclePrompt(workouts, profile) }],
+        4000,
+        'You are a strength coach that outputs ONLY raw JSON with no markdown, no code fences, no explanation, and no text before or after the JSON object.'
+      )
       const cycle = parseCycleResponse(text)
       if (!cycle) throw new Error('Failed to parse AI response. Try again.')
       onCycleGenerated({ ...cycle, generatedAt: new Date().toISOString() })
