@@ -106,7 +106,7 @@ Open `http://localhost:5173`.
 Home screen. Shows today's date, weekly stats, and quick-start buttons for each muscle group. Tap any card to preview, edit, and launch that workout. If an AI cycle is active, shows a progress bar and the current week's days. Saved plans appear here too.
 
 ### Plan
-AI-generated 2-week training cycle. Hit **Generate AI Plan** to create one — it reads your last 10 sessions and profile, then returns a structured plan with target weights, rep ranges, rest times, coach notes, and progression rules. Refresh anytime to regenerate.
+AI-generated 2-week training cycle. Hit **Generate AI Plan** to create one — it reads your last 10 sessions and profile, then builds a plan around your **existing exercises**. The AI keeps the movements you're already doing, adjusts sets/reps/weights/rest for progressive overload, and programs Week 2 slightly harder than Week 1. It only adds new exercises if a muscle group has no coverage. Refresh anytime to regenerate.
 
 ### Coach
 Chat interface with an AI coach that has full access to your training data. It knows every exercise you've done, whether you're progressing or stalling, and your volume per muscle group. Responses are cleanly formatted with sections, bullet points, and bold highlights — no raw markdown symbols.
