@@ -2747,24 +2747,24 @@ export default function App() {
   function handleEndSession() {
     if (!activeSession) return
     const endedAt = Date.now()
+    // Only include exercises where at least one set was actually completed
+    const doneExercises = activeSession.exercises.filter(ex => ex.sets.some(s => s.done))
     const completed = {
       id: uuid(),
       name: activeSession.name,
       startedAt: activeSession.startedAt,
       endedAt,
-      exercises: activeSession.exercises.map(ex => ({
+      exercises: doneExercises.map(ex => ({
         name: ex.name, muscle: ex.muscle,
         sets: ex.sets.map(s => ({ weight: s.weight, unit: s.unit, reps: s.reps, rpe: s.rpe, note: s.note, dropSets: s.dropSets, done: s.done })),
       })),
     }
-    // Save per-exercise history for future pre-fill
+    // Save per-exercise history — only for exercises with at least one done set
     const exHistory = loadExerciseHistory()
-    activeSession.exercises.forEach(ex => {
-      const loggedSets = ex.sets.filter(s => s.done || s.weight || s.reps)
-      if (loggedSets.length === 0) return
+    doneExercises.forEach(ex => {
       const entry = {
         date: new Date().toISOString().split('T')[0],
-        sets: ex.sets.map((s, i) => ({
+        sets: ex.sets.filter(s => s.done).map((s, i) => ({
           setNumber: i + 1,
           weight: s.weight || '',
           unit: s.unit || 'lbs',
