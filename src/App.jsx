@@ -16,15 +16,64 @@ const COLORS = {
 }
 
 const EXERCISE_LIBRARY = {
-  Legs: ['Squat', 'Leg Press', 'Leg Extension', 'Seated Leg Curl', 'Romanian Deadlift', 'Hack Squat', 'Walking Lunges', 'Calf Extension', 'Calf Raises'],
-  Back: ['Pull-Ups', 'T-Bar Row', 'Seated Row', 'Lat Machine', 'Front Lat Machine', 'Low Row', 'Front Pull Down Machine', 'Barbell Row', 'Face Pull', 'Deadlift'],
-  Biceps: ['Biceps Curl', 'Curl Dumbbells', 'Hammer Curl', 'Arm Curl Machine', 'Preacher Curl', 'Cable Curl'],
-  Chest: ['Bench Press', 'Chest Press', 'Pec Fly', 'Cable Crossover', 'Incline Dumbbell Press', 'Cable Flyes', 'Dips'],
-  Shoulders: ['Lateral Raises', 'Dumbbell Shoulder Press', 'Shoulder Press', 'Rear Delt Raises', 'Cable Lateral Raises', 'Arnold Press', 'Upright Row'],
-  Triceps: ['Tricep Pushdown', 'Close Grip Bench Press', 'Dips', 'Skull Crushers', 'Overhead Tricep Extension', 'Cable Kickback'],
-  Trapezoid: ['Shrugs', 'Cable Shrugs', 'Barbell Shrugs'],
-  Glutes: ['Hip Thrusts', 'Bulgarian Split Squat', 'Cable Kickbacks', 'Glute Bridge'],
-  Core: ['Hanging Leg Raises', 'Cable Crunch', 'Plank', 'Ab Wheel Rollout', 'Russian Twists'],
+  Chest: [
+    'Bench Press', 'Incline Bench Press', 'Decline Bench Press',
+    'Dumbbell Bench Press', 'Incline Dumbbell Press', 'Decline Dumbbell Press',
+    'Chest Press', 'Pec Fly', 'Dumbbell Fly', 'Cable Crossover', 'Cable Flyes',
+    'Push-Ups', 'Wide Push-Ups', 'Diamond Push-Ups', 'Decline Push-Ups', 'Incline Push-Ups',
+    'Dips', 'Svend Press', 'Landmine Press',
+  ],
+  Back: [
+    'Pull-Ups', 'Chin-Ups', 'Wide Grip Pull-Ups', 'Neutral Grip Pull-Ups',
+    'Lat Machine', 'Front Lat Machine', 'Front Pull Down Machine',
+    'T-Bar Row', 'Barbell Row', 'Pendlay Row', 'Seated Row', 'Low Row',
+    'Single Arm Dumbbell Row', 'Chest Supported Row', 'Inverted Row',
+    'Face Pull', 'Straight Arm Pulldown', 'Cable Row',
+    'Deadlift', 'Rack Pull',
+  ],
+  Shoulders: [
+    'Dumbbell Shoulder Press', 'Barbell Shoulder Press', 'Shoulder Press',
+    'Arnold Press', 'Machine Shoulder Press',
+    'Lateral Raises', 'Cable Lateral Raises', 'Machine Lateral Raises',
+    'Front Raises', 'Cable Front Raises', 'Plate Front Raises',
+    'Rear Delt Raises', 'Bent Over Lateral Raises', 'Reverse Pec Deck',
+    'Upright Row', 'Face Pull',
+  ],
+  Biceps: [
+    'Biceps Curl', 'Curl Dumbbells', 'Incline Dumbbell Curl',
+    'Hammer Curl', 'Cross Body Curl', 'Concentration Curl',
+    'Preacher Curl', 'Arm Curl Machine', 'Cable Curl',
+    'Reverse Curl', 'Cable Hammer Curl', 'Chin-Ups',
+  ],
+  Triceps: [
+    'Tricep Pushdown', 'Overhead Tricep Extension', 'Skull Crushers',
+    'Close Grip Bench Press', 'JM Press', 'Tricep Dips',
+    'Diamond Push-Ups', 'Cable Kickback', 'Single Arm Pushdown',
+    'Reverse Grip Pushdown', 'Dips',
+  ],
+  Legs: [
+    'Squat', 'Front Squat', 'Box Squat', 'Hack Squat', 'Smith Machine Squat',
+    'Leg Press', 'Leg Extension', 'Leg Curl', 'Seated Leg Curl', 'Nordic Hamstring Curl',
+    'Romanian Deadlift', 'Stiff Leg Deadlift', 'Sumo Deadlift', 'Good Morning',
+    'Walking Lunges', 'Reverse Lunge', 'Split Squat', 'Step-Ups', 'Sissy Squat',
+    'Calf Raises', 'Seated Calf Raises', 'Calf Extension', 'Leg Press Calf Raises',
+  ],
+  Glutes: [
+    'Hip Thrusts', 'Barbell Hip Thrusts', 'Bulgarian Split Squat',
+    'Glute Bridge', 'Single Leg Glute Bridge', 'Cable Kickbacks',
+    'Donkey Kicks', 'Lateral Band Walk', 'Sumo Squat', 'Step-Ups',
+  ],
+  Core: [
+    'Plank', 'Side Plank', 'Hanging Leg Raises', 'Leg Raises',
+    'Cable Crunch', 'Crunches', 'Sit-Ups', 'Bicycle Crunches',
+    'Ab Wheel Rollout', 'Russian Twists', 'Mountain Climbers',
+    'Dead Bug', 'Bird Dog', 'Pallof Press', 'Cable Woodchop',
+    'V-Ups', 'Flutter Kicks', 'Dragon Flag', 'Toe Touches',
+  ],
+  Trapezoid: [
+    'Shrugs', 'Barbell Shrugs', 'Dumbbell Shrugs', 'Cable Shrugs',
+    'Rack Pull', 'Upright Row', 'Face Pull',
+  ],
 }
 
 const MUSCLES = Object.keys(EXERCISE_LIBRARY)
@@ -172,7 +221,7 @@ function getLastSetData(workouts, exerciseName) {
   return null
 }
 
-function makeExercise(template, workouts = [], defaultUnit = 'lbs') {
+function makeExercise(template, workouts = [], defaultUnit = 'lbs', historyEntry = null) {
   const saved = loadExerciseDefaults()[template.name] || {}
   const sets = template.sets || 3
   const lastData = getLastSetData(workouts, template.name)
@@ -188,17 +237,20 @@ function makeExercise(template, workouts = [], defaultUnit = 'lbs') {
     targetWeight: template.targetWeight || null,
     note: saved.note || template.note || '',
     activeSetIndex: 0,
-    sets: Array.from({ length: sets }, () => ({
-      id: uuid(),
-      weight,
-      unit,
-      reps: '',
-      rpe: null,
-      note: '',
-      dropSets: [],
-      done: false,
-      showNote: false,
-    })),
+    sets: Array.from({ length: sets }, (_, i) => {
+      const histSet = historyEntry?.sets?.[i]
+      return {
+        id: uuid(),
+        weight: histSet?.weight !== undefined && histSet.weight !== '' ? histSet.weight : weight,
+        unit: histSet?.unit || unit,
+        reps: histSet?.reps ? String(histSet.reps) : '',
+        rpe: null,
+        note: '',
+        dropSets: [],
+        done: false,
+        showNote: false,
+      }
+    }),
   }
 }
 
@@ -253,6 +305,22 @@ function saveProfile(profile) {
   } catch (_) {}
 }
 
+const EXERCISE_HISTORY_KEY = 'forge_exercise_history'
+
+function loadExerciseHistory() {
+  try {
+    const raw = localStorage.getItem(EXERCISE_HISTORY_KEY)
+    if (raw) return JSON.parse(raw)
+  } catch (_) {}
+  return {}
+}
+
+function saveExerciseHistory(data) {
+  try {
+    localStorage.setItem(EXERCISE_HISTORY_KEY, JSON.stringify(data))
+  } catch (_) {}
+}
+
 function profileDisplayHeight(profile) {
   if (!profile) return ''
   if (profile.heightUnit === 'ft') return `${profile.heightFt || 0}'${profile.heightIn || 0}"`
@@ -273,7 +341,7 @@ function fireNotification() {
 // ─── API ──────────────────────────────────────────────────────────────────────
 
 async function callAnthropic(messages, maxTokens, systemPrompt) {
-  const body = { model: 'claude-sonnet-4-20250514', max_tokens: maxTokens, messages }
+  const body = { model: 'claude-haiku-4-5-20251001', max_tokens: maxTokens, messages }
   if (systemPrompt) body.system = systemPrompt
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -1337,21 +1405,32 @@ function SessionSetupScreen({ sessionName, initialExercises, onStart, onCancel, 
 const RING_RADIUS = 54
 const RING_CIRC = 2 * Math.PI * RING_RADIUS
 
-function RestTimerOverlay({ phase, secondsLeft, totalSeconds, onSkip, onAdd15 }) {
+function RestTimerOverlay({ phase, secondsLeft, totalSeconds, onSkip, onAdd15, onMinus15, nextExInfo }) {
   const progress = totalSeconds > 0 ? secondsLeft / totalSeconds : 1
   const offset = RING_CIRC * (1 - progress)
-  const ringColor = progress > 0.5 ? COLORS.success : progress > 0.25 ? '#ffcc00' : COLORS.danger
+  const isPrepTime = secondsLeft > 0 && secondsLeft <= 15
+  const ringColor = isPrepTime ? '#ff8844' : progress > 0.5 ? COLORS.success : progress > 0.25 ? '#ffcc00' : COLORS.danger
 
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 300,
       background: 'rgba(8,8,9,0.97)',
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 32,
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 28,
     }}>
-      <div style={{ color: COLORS.muted, fontSize: 13, fontWeight: 600, letterSpacing: 2, textTransform: 'uppercase' }}>
-        REST
+      <div style={{
+        color: isPrepTime ? '#ff8844' : COLORS.muted,
+        fontSize: 13, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase',
+        transition: 'color 0.4s',
+        animation: isPrepTime ? 'prepPulse 1s ease-in-out infinite' : 'none',
+      }}>
+        {isPrepTime ? 'GET READY' : 'REST'}
       </div>
-      <div style={{ position: 'relative', width: 140, height: 140 }}>
+      <div style={{
+        position: 'relative', width: 140, height: 140,
+        borderRadius: '50%',
+        boxShadow: isPrepTime ? '0 0 28px #ff884466' : 'none',
+        transition: 'box-shadow 0.4s',
+      }}>
         <svg width="140" height="140" style={{ transform: 'rotate(-90deg)' }}>
           <circle cx="70" cy="70" r={RING_RADIUS} fill="none" stroke={COLORS.border} strokeWidth="8" />
           <circle cx="70" cy="70" r={RING_RADIUS} fill="none" stroke={ringColor} strokeWidth="8"
@@ -1359,11 +1438,30 @@ function RestTimerOverlay({ phase, secondsLeft, totalSeconds, onSkip, onAdd15 })
             style={{ transition: 'stroke-dashoffset 1s linear, stroke 0.5s' }} />
         </svg>
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <span style={{ ...S.mono, fontSize: 36, fontWeight: 700 }}>{formatTime(secondsLeft)}</span>
+          <span style={{ ...S.mono, fontSize: 36, fontWeight: 700, color: isPrepTime ? '#ff8844' : COLORS.text, transition: 'color 0.4s' }}>{formatTime(secondsLeft)}</span>
         </div>
       </div>
+
+      {nextExInfo && (
+        <div style={{
+          ...S.card,
+          width: 280, textAlign: 'center', padding: '14px 18px',
+          borderColor: isPrepTime ? '#ff884466' : COLORS.border,
+          background: isPrepTime ? '#ff884408' : COLORS.card,
+          transition: 'border-color 0.4s, background 0.4s',
+        }}>
+          <div style={{ color: COLORS.muted, fontSize: 10, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 6 }}>Up Next</div>
+          <div style={{ fontWeight: 700, fontSize: 16, color: isPrepTime ? '#ff8844' : COLORS.text, marginBottom: 4 }}>{nextExInfo.name}</div>
+          <div style={{ color: COLORS.muted, fontSize: 12 }}>{nextExInfo.detail}</div>
+          {nextExInfo.weight ? (
+            <div style={{ ...S.mono, color: COLORS.lbs, fontSize: 13, marginTop: 4 }}>{nextExInfo.weight}{nextExInfo.unit}</div>
+          ) : null}
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: 12 }}>
         <Btn onClick={onSkip} style={{ padding: '12px 24px' }}>Skip Rest →</Btn>
+        <Btn onClick={onMinus15} style={{ padding: '12px 24px' }}>−15s</Btn>
         <Btn onClick={onAdd15} style={{ padding: '12px 24px' }}>+15s</Btn>
       </div>
     </div>
@@ -1442,7 +1540,11 @@ function SessionPlanSheet({ exercises, currentIdx, onJump, onAddExercise, onReor
 function ActiveWorkoutScreen({ session, onUpdate, onEnd, workouts = [], restTimer, setRestTimer }) {
   const [showPlanSheet, setShowPlanSheet] = useState(false)
   const [showSwap, setShowSwap] = useState(false)
+  const [showLastWorkout, setShowLastWorkout] = useState(false)
   const [tick, setTick] = useState(0)
+  const [dismissedBanners, setDismissedBanners] = useState(new Set())
+  const [exerciseHistory] = useState(() => loadExerciseHistory())
+  const vibrated15Ref = useRef(false)
   const elapsed = useSessionTimer(true)
 
   const exercises = session.exercises
@@ -1450,6 +1552,11 @@ function ActiveWorkoutScreen({ session, onUpdate, onEnd, workouts = [], restTime
   const ex = exercises[exIdx]
   const setIdx = ex ? ex.activeSetIndex : 0
   const currentSet = ex ? ex.sets[setIdx] : null
+
+  // Reset vibration flag when rest starts
+  useEffect(() => {
+    if (restTimer.phase === 'resting') vibrated15Ref.current = false
+  }, [restTimer.phase])
 
   // Tick interval — drives display updates and phase-transition checks
   useEffect(() => {
@@ -1462,6 +1569,10 @@ function ActiveWorkoutScreen({ session, onUpdate, onEnd, workouts = [], restTime
   useEffect(() => {
     if (restTimer.phase === 'idle' || !restTimer.startedAt) return
     const remaining = restTimer.durationMs - (Date.now() - restTimer.startedAt)
+    if (remaining <= 15000 && !vibrated15Ref.current) {
+      vibrated15Ref.current = true
+      try { navigator.vibrate?.(200) } catch (_) {}
+    }
     if (remaining > 0) return
     if (restTimer.phase === 'resting') {
       setRestTimer({ phase: 'idle', startedAt: null, durationMs: 0, targetRestSec: 0 })
@@ -1487,6 +1598,10 @@ function ActiveWorkoutScreen({ session, onUpdate, onEnd, workouts = [], restTime
 
   function add15() {
     setRestTimer(prev => ({ ...prev, durationMs: prev.durationMs + 15000 }))
+  }
+
+  function minus15() {
+    setRestTimer(prev => ({ ...prev, durationMs: Math.max(5000, prev.durationMs - 15000) }))
   }
 
   function advanceSet() {
@@ -1539,6 +1654,19 @@ function ActiveWorkoutScreen({ session, onUpdate, onEnd, workouts = [], restTime
   const isLastSet = setIdx === ex.sets.length - 1
   const isLastExercise = exIdx === exercises.length - 1
 
+  // Compute "Up Next" info for rest timer overlay
+  const nextExInfo = (() => {
+    if (restTimer.phase === 'idle') return null
+    const nextSetIdx = setIdx + 1
+    if (nextSetIdx < ex.sets.length) {
+      const ns = ex.sets[nextSetIdx]
+      return { name: ex.name, detail: `Set ${nextSetIdx + 1}/${ex.sets.length} · ${ex.repsMin}–${ex.repsMax} reps`, weight: ns?.weight || '', unit: ns?.unit || '' }
+    }
+    const nextEx = exercises[exIdx + 1]
+    if (!nextEx) return null
+    return { name: nextEx.name, detail: `${nextEx.sets.length} sets · ${nextEx.repsMin}–${nextEx.repsMax} reps`, weight: nextEx.sets[0]?.weight || '', unit: nextEx.sets[0]?.unit || '' }
+  })()
+
   return (
     <>
       <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: COLORS.bg, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
@@ -1558,7 +1686,14 @@ function ActiveWorkoutScreen({ session, onUpdate, onEnd, workouts = [], restTime
                 }}>⇄ Swap</button>
               </div>
             </div>
-            <div style={{ ...S.mono, fontSize: 15, fontWeight: 700, color: COLORS.accent, paddingTop: 4 }}>{formatMMSS(elapsed)}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingTop: 4 }}>
+              <button onClick={() => setShowLastWorkout(true)} title="Last Workout" style={{
+                background: 'none', border: `1px solid ${COLORS.border}`, borderRadius: 8,
+                color: COLORS.muted, cursor: 'pointer', fontSize: 14, padding: '4px 8px',
+                fontFamily: "'Sora', sans-serif",
+              }}>📋</button>
+              <div style={{ ...S.mono, fontSize: 15, fontWeight: 700, color: COLORS.accent }}>{formatMMSS(elapsed)}</div>
+            </div>
           </div>
           {/* Set dots */}
           <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
@@ -1584,6 +1719,31 @@ function ActiveWorkoutScreen({ session, onUpdate, onEnd, workouts = [], restTime
               <span style={{ color: COLORS.muted, fontSize: 12 }}> · {ex.repsMin}–{ex.repsMax} reps</span>
             </div>
           )}
+
+          {(() => {
+            const lastHist = exerciseHistory[ex.name]?.[0]
+            const showBanner = lastHist && lastHist.sets.length > 0 && !dismissedBanners.has(ex.name)
+            if (!showBanner) return null
+            return (
+              <div style={{ ...S.card, marginBottom: 14, padding: '10px 14px', borderColor: COLORS.success + '33', background: COLORS.success + '08', position: 'relative' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <span style={{ color: COLORS.success, fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>Last time ({lastHist.date})</span>
+                  <button onClick={() => setDismissedBanners(prev => new Set([...prev, ex.name]))}
+                    style={{ background: 'none', border: 'none', color: COLORS.muted, cursor: 'pointer', fontSize: 15, lineHeight: 1, padding: '0 2px' }}>✕</button>
+                </div>
+                {lastHist.sets.map((s, i) => (
+                  <div key={i} style={{ ...S.mono, fontSize: 12, color: COLORS.muted, paddingTop: 2 }}>
+                    <span style={{ color: COLORS.text }}>Set {s.setNumber}</span>
+                    {' — '}
+                    <span style={{ color: COLORS.lbs }}>{s.weight || '—'}{s.unit}</span>
+                    {' × '}
+                    <span>{s.reps || '—'} reps</span>
+                    {s.note ? <span style={{ color: COLORS.muted, fontStyle: 'italic' }}> ({s.note})</span> : null}
+                  </div>
+                ))}
+              </div>
+            )
+          })()}
 
           {setIdx > 0 && ex.sets[setIdx - 1].done && (
             <div style={{ color: COLORS.muted, fontSize: 12, marginBottom: 12, ...S.mono }}>
@@ -1711,7 +1871,7 @@ function ActiveWorkoutScreen({ session, onUpdate, onEnd, workouts = [], restTime
 
       {restTimer.phase !== 'idle' && (
         <RestTimerOverlay phase={restTimer.phase} secondsLeft={timerSecondsLeft}
-          totalSeconds={timerTotalSeconds} onSkip={skipRest} onAdd15={add15} />
+          totalSeconds={timerTotalSeconds} onSkip={skipRest} onAdd15={add15} onMinus15={minus15} nextExInfo={nextExInfo} />
       )}
 
       {showSwap && (
@@ -1732,6 +1892,47 @@ function ActiveWorkoutScreen({ session, onUpdate, onEnd, workouts = [], restTime
           onReorder={(newExercises, newIdx) => onUpdate(null, null, newIdx, null, newExercises)}
           onEndWorkout={onEnd} onClose={() => setShowPlanSheet(false)} workouts={workouts} />
       )}
+
+      {showLastWorkout && (() => {
+        const prevSession = workouts.find(w => w.name === session.name)
+        return (
+          <BottomSheet title="Last Workout" onClose={() => setShowLastWorkout(false)} height="85vh">
+            <div style={{ padding: '14px 16px' }}>
+              {!prevSession ? (
+                <div style={{ color: COLORS.muted, fontSize: 14, textAlign: 'center', marginTop: 40 }}>
+                  No previous session found for this workout.
+                </div>
+              ) : (
+                <>
+                  <div style={{ color: COLORS.muted, fontSize: 13, marginBottom: 16 }}>
+                    {formatDate(prevSession.startedAt)}
+                    {prevSession.endedAt && ` · ${formatDuration(prevSession.endedAt - new Date(prevSession.startedAt).getTime())}`}
+                  </div>
+                  {prevSession.exercises.map((pex, eIdx) => (
+                    <div key={eIdx} style={{ marginBottom: 20 }}>
+                      <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {pex.name} <Tag>{pex.muscle}</Tag>
+                      </div>
+                      {pex.sets.map((s, sIdx) => (
+                        <div key={sIdx} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: sIdx < pex.sets.length - 1 ? `1px solid ${COLORS.border}` : 'none' }}>
+                          <span style={{ color: COLORS.muted, fontSize: 12, ...S.mono }}>Set {sIdx + 1}</span>
+                          <span style={{ ...S.mono, fontSize: 13 }}>
+                            <span style={{ color: COLORS.lbs }}>{s.weight || '—'}{s.unit}</span>
+                            <span style={{ color: COLORS.muted }}> × </span>
+                            <span>{s.reps || '—'} reps</span>
+                            {s.rpe && <span style={{ color: COLORS.muted }}> · RPE {s.rpe}</span>}
+                            {s.note && <span style={{ color: COLORS.muted, fontStyle: 'italic' }}> · {s.note}</span>}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          </BottomSheet>
+        )
+      })()}
     </>
   )
 }
@@ -2256,8 +2457,9 @@ const QUICK_QUESTIONS = [
   'What weights should I use next session?',
   'Am I overtraining any muscle?',
   'Which muscles need more work?',
-  'Build me a push day plan',
+  'Review my current training plan',
   'How is my bench progressing?',
+  'What should I focus on this week?',
 ]
 
 function CoachTab({ workouts, aiCycle, chatHistory, onChatUpdate, profile }) {
@@ -2429,6 +2631,10 @@ const CSS = `
     0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
     40% { transform: scale(1); opacity: 1; }
   }
+  @keyframes prepPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
   input[type=number]::-webkit-inner-spin-button,
   input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
   input[type=number] { -moz-appearance: textfield; }
@@ -2488,7 +2694,8 @@ export default function App() {
 
   function handleQuickStart(type, sessionName, templates) {
     const unit = profile?.workoutUnit || 'lbs'
-    setActiveSession({ name: sessionName || type, startedAt: new Date().toISOString(), exerciseIndex: 0, exercises: templates.map(t => makeExercise(t, workouts, unit)) })
+    const exHistory = loadExerciseHistory()
+    setActiveSession({ name: sessionName || type, startedAt: new Date().toISOString(), exerciseIndex: 0, exercises: templates.map(t => makeExercise(t, workouts, unit, exHistory[t.name]?.[0] || null)) })
     setActiveScreen('activeWorkout')
   }
 
@@ -2505,17 +2712,19 @@ export default function App() {
 
   function handleStartPlan(plan) {
     const unit = profile?.workoutUnit || 'lbs'
-    setActiveSession({ name: plan.name, startedAt: new Date().toISOString(), exerciseIndex: 0, exercises: plan.exercises.map(t => makeExercise(t, workouts, unit)) })
+    const exHistory = loadExerciseHistory()
+    setActiveSession({ name: plan.name, startedAt: new Date().toISOString(), exerciseIndex: 0, exercises: plan.exercises.map(t => makeExercise(t, workouts, unit, exHistory[t.name]?.[0] || null)) })
     setActiveScreen('sessionSetup')
   }
 
   function handleStartCycleDay(day) {
     const unit = profile?.workoutUnit || 'lbs'
+    const exHistory = loadExerciseHistory()
     const exercises = (day.exercises || []).map(ex => makeExercise({
       name: ex.name, muscle: ex.muscle || 'Other', sets: ex.sets || 3,
       repsMin: ex.repsMin || 8, repsMax: ex.repsMax || 12, restSec: ex.restSec || 90,
       targetWeight: ex.targetWeight || null, note: ex.note || '',
-    }, workouts, unit))
+    }, workouts, unit, exHistory[ex.name]?.[0] || null))
     setActiveSession({ name: `${day.dayLabel} — ${day.focus}`, startedAt: new Date().toISOString(), exerciseIndex: 0, exercises })
     setActiveScreen('sessionSetup')
   }
@@ -2548,6 +2757,25 @@ export default function App() {
         sets: ex.sets.map(s => ({ weight: s.weight, unit: s.unit, reps: s.reps, rpe: s.rpe, note: s.note, dropSets: s.dropSets, done: s.done })),
       })),
     }
+    // Save per-exercise history for future pre-fill
+    const exHistory = loadExerciseHistory()
+    activeSession.exercises.forEach(ex => {
+      const loggedSets = ex.sets.filter(s => s.done || s.weight || s.reps)
+      if (loggedSets.length === 0) return
+      const entry = {
+        date: new Date().toISOString().split('T')[0],
+        sets: ex.sets.map((s, i) => ({
+          setNumber: i + 1,
+          weight: s.weight || '',
+          unit: s.unit || 'lbs',
+          reps: s.reps || '',
+          note: s.note || '',
+        })),
+      }
+      const prev = exHistory[ex.name] || []
+      exHistory[ex.name] = [entry, ...prev].slice(0, 5)
+    })
+    saveExerciseHistory(exHistory)
     const newWorkouts = [completed, ...workouts]
     setWorkouts(newWorkouts)
     persist({ workouts: newWorkouts })
