@@ -449,52 +449,76 @@ RULES:
 
 function buildCyclePrompt(workouts, profile) {
   const last10 = workouts.slice(0, 10)
+  const unit = profile?.workoutUnit || 'lbs'
+
+  // Build per-session summary with sets/reps/weights
   const historyText = last10.map(w =>
     `${formatDate(w.startedAt)} — ${w.name}: ${w.exercises.map(e =>
-      `${e.name} ${e.sets.map(s => `${s.weight}${s.unit}x${s.reps}`).join(', ')}`
+      `${e.name} ${e.sets.filter(s => s.done).map(s => `${s.weight}${s.unit}x${s.reps}`).join(', ')}`
     ).join(' | ')}`
   ).join('\n')
+
+  // Extract the user's actual exercise patterns: per workout type, what exercises they do and at what weights
+  const workoutPatterns = {}
+  last10.forEach(w => {
+    const key = w.name
+    if (!workoutPatterns[key]) workoutPatterns[key] = {}
+    w.exercises.forEach(e => {
+      const doneSets = e.sets.filter(s => s.done && s.weight)
+      if (!doneSets.length) return
+      if (!workoutPatterns[key][e.name]) workoutPatterns[key][e.name] = []
+      workoutPatterns[key][e.name].push(...doneSets.map(s => ({ w: s.weight, u: s.unit, r: s.reps })))
+    })
+  })
+
+  // Summarize: for each workout type, list exercises with typical weight range
+  const patternLines = Object.entries(workoutPatterns).map(([wName, exMap]) => {
+    const exLines = Object.entries(exMap).map(([exName, sets]) => {
+      const weights = sets.map(s => parseFloat(s.w)).filter(Boolean)
+      const minW = Math.min(...weights)
+      const maxW = Math.max(...weights)
+      const reps = sets.map(s => parseInt(s.r)).filter(Boolean)
+      const avgReps = reps.length ? Math.round(reps.reduce((a, b) => a + b, 0) / reps.length) : '?'
+      const weightStr = weights.length ? (minW === maxW ? `${minW}${unit}` : `${minW}-${maxW}${unit}`) : 'bodyweight'
+      return `  ${exName}: ${weightStr} ~${avgReps} reps`
+    })
+    return `${wName}:\n${exLines.join('\n')}`
+  }).join('\n\n')
 
   const expLabel = { beginner: 'Beginner', intermediate: 'Intermediate', advanced: 'Advanced' }
   const goalLabel = { muscle: 'Muscle Gain', fatloss: 'Fat Loss', strength: 'Strength', fitness: 'General Fitness' }
   const equipLabel = { full: 'Full Gym', home: 'Home Gym', minimal: 'Minimal Equipment' }
   const profileLine = profile
-    ? `Goal: ${goalLabel[profile.goal] || 'Muscle Gain'} | Equipment: ${equipLabel[profile.equipment] || 'Full Gym'} | Frequency: ${profile.daysPerWeek || 4} days/week | Experience: ${expLabel[profile.experience] || 'Intermediate'} | Preferred unit: ${profile.workoutUnit || 'lbs'}`
-    : 'Goal: Muscle Gain | Equipment: Full gym | Frequency: 4 days/week'
+    ? `Goal: ${goalLabel[profile.goal] || 'Muscle Gain'} | Equipment: ${equipLabel[profile.equipment] || 'Full Gym'} | Frequency: ${profile.daysPerWeek || 4} days/week | Experience: ${expLabel[profile.experience] || 'Intermediate'} | Unit: ${unit}`
+    : 'Goal: Muscle Gain | Equipment: Full gym | Frequency: 4 days/week | Unit: lbs'
 
-  return `Generate a personalized 2-week training cycle:
-- ${profileLine}
+  const daysPerWeek = profile?.daysPerWeek || 4
+  const hasHistory = last10.length > 0
 
-Recent history:
-${historyText || 'No previous sessions'}
+  return `You are creating a 2-week training cycle for this athlete.
+${profileLine}
 
-Return ONLY valid JSON with no markdown fences, no comments, no explanation. Use this exact structure:
-{
-  "cycleName": "string",
-  "split": "string",
-  "progressionRules": "string",
-  "coachNote": "string",
-  "week1": [
-    {
-      "dayLabel": "Day 1",
-      "focus": "string",
-      "estimatedDuration": "60 min",
-      "exercises": [
-        {"name":"string","muscle":"string","sets":4,"repsMin":8,"repsMax":12,"restSec":90,"targetWeight":"string","note":"string"}
-      ]
-    }
-  ],
-  "week2": [
-    {
-      "dayLabel": "Day 1",
-      "focus": "string",
-      "estimatedDuration": "60 min",
-      "exercises": [
-        {"name":"string","muscle":"string","sets":4,"repsMin":8,"repsMax":12,"restSec":90,"targetWeight":"string","note":"string"}
-      ]
-    }
-  ]
-}`
+${hasHistory ? `ATHLETE'S CURRENT EXERCISE SELECTION (use these as the base):
+${patternLines}
+
+IMPORTANT RULES FOR EXERCISE SELECTION:
+- Keep the athlete's existing exercises. Do NOT replace them unless there is a clear problem (e.g. two exercises training the exact same movement pattern).
+- You may add 1 new exercise per day if a muscle group has zero coverage.
+- Adjust sets, reps, rest times, and target weights for progressive overload — that is your main job.
+- Week 2 should be slightly harder than Week 1 (add a set, increase weight by 2.5-5%, or tighten rest).
+- Set targetWeight from the athlete's actual numbers above. Add small progression.
+
+Full session log (for context):
+${historyText}` : `No workout history yet. Build a solid ${daysPerWeek}-day beginner-friendly plan.`}
+
+Output rules:
+- ${daysPerWeek} workout days per week, each with 4-5 exercises
+- Keep "note" fields under 6 words
+- "progressionRules": one sentence
+- "coachNote": one sentence
+
+Return ONLY a raw JSON object (no markdown, no fences, no explanation):
+{"cycleName":"","split":"","progressionRules":"","coachNote":"","week1":[{"dayLabel":"Day 1","focus":"","estimatedDuration":"","exercises":[{"name":"","muscle":"","sets":3,"repsMin":8,"repsMax":12,"restSec":90,"targetWeight":"","note":""}]}],"week2":[{"dayLabel":"Day 1","focus":"","estimatedDuration":"","exercises":[{"name":"","muscle":"","sets":3,"repsMin":8,"repsMax":12,"restSec":90,"targetWeight":"","note":""}]}]}`
 }
 
 function parseCycleResponse(text) {
@@ -2362,9 +2386,10 @@ function PlanTab({ aiCycle, workouts, onCycleGenerated, profile }) {
     try {
       const text = await callAnthropic(
         [{ role: 'user', content: buildCyclePrompt(workouts, profile) }],
-        4000,
-        'You are a strength coach that outputs ONLY raw JSON with no markdown, no code fences, no explanation, and no text before or after the JSON object.'
+        8000,
+        'You are a strength coach. Output ONLY a raw JSON object. No markdown. No code fences. No explanation. No text before or after the JSON. Start your response with { and end with }.'
       )
+      console.log('[FORGE] Raw AI response:', text)
       const cycle = parseCycleResponse(text)
       if (!cycle) throw new Error('Failed to parse AI response. Try again.')
       onCycleGenerated({ ...cycle, generatedAt: new Date().toISOString() })
