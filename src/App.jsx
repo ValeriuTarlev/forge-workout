@@ -436,7 +436,15 @@ ${exerciseLines || '  No data yet'}
 MUSCLE VOLUME (last 14 days):
 ${volumeLines}
 
-RULES: Tailor advice to the user's experience level and goal. Suggest specific weights using progressive overload. Warn about overtraining (>20 sets/14d) or undertraining (0 sets/14d). Be concise and use numbers. Use the user's preferred weight unit.`
+RULES:
+- Tailor advice to the user's experience level and goal.
+- Suggest specific weights using progressive overload.
+- Warn about overtraining (>20 sets/14d) or undertraining (0 sets/14d).
+- Be concise and use numbers. Use the user's preferred weight unit.
+- Format responses cleanly: use short paragraphs, numbered lists, or bullet points (- item).
+- Use **bold** only for exercise names or key numbers.
+- Never use markdown headers with # symbols for short answers.
+- Never use asterisks for emphasis mid-sentence — just write clearly.`
 }
 
 function buildCyclePrompt(workouts, profile) {
@@ -2453,6 +2461,55 @@ function PlanTab({ aiCycle, workouts, onCycleGenerated, profile }) {
 
 // ─── COACH TAB ────────────────────────────────────────────────────────────────
 
+function renderInline(text) {
+  const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/)
+  return parts.map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**'))
+      return <strong key={i} style={{ fontWeight: 700, color: COLORS.text }}>{part.slice(2, -2)}</strong>
+    if (part.startsWith('*') && part.endsWith('*'))
+      return <span key={i}>{part.slice(1, -1)}</span>
+    return part
+  })
+}
+
+function renderMessage(text) {
+  const lines = text.split('\n')
+  return lines.map((line, i) => {
+    if (line.trim() === '')
+      return <div key={i} style={{ height: 6 }} />
+
+    if (/^#{1,3}\s/.test(line)) {
+      const content = line.replace(/^#+\s/, '')
+      return (
+        <div key={i} style={{ fontWeight: 700, fontSize: 13, color: COLORS.accent, marginTop: 10, marginBottom: 3, letterSpacing: 0.3 }}>
+          {renderInline(content)}
+        </div>
+      )
+    }
+
+    if (/^[-*•]\s/.test(line)) {
+      return (
+        <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 3, alignItems: 'flex-start' }}>
+          <span style={{ color: COLORS.accent, fontWeight: 700, flexShrink: 0, marginTop: 1 }}>·</span>
+          <span>{renderInline(line.replace(/^[-*•]\s/, ''))}</span>
+        </div>
+      )
+    }
+
+    if (/^\d+\.\s/.test(line)) {
+      const num = line.match(/^(\d+)\./)[1]
+      return (
+        <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 3, alignItems: 'flex-start' }}>
+          <span style={{ ...S.mono, color: COLORS.accent, fontWeight: 700, flexShrink: 0, minWidth: 18, marginTop: 1 }}>{num}.</span>
+          <span>{renderInline(line.replace(/^\d+\.\s/, ''))}</span>
+        </div>
+      )
+    }
+
+    return <div key={i} style={{ marginBottom: 2 }}>{renderInline(line)}</div>
+  })
+}
+
 const QUICK_QUESTIONS = [
   'What weights should I use next session?',
   'Am I overtraining any muscle?',
@@ -2523,8 +2580,10 @@ function CoachTab({ workouts, aiCycle, chatHistory, onChatUpdate, profile }) {
               background: msg.role === 'user' ? COLORS.accent + '22' : COLORS.card,
               border: `1px solid ${msg.role === 'user' ? COLORS.accent + '44' : COLORS.border}`,
               borderRadius: msg.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-              padding: '12px 14px', fontSize: 14, lineHeight: 1.6, whiteSpace: 'pre-wrap',
-            }}>{msg.content}</div>
+              padding: '12px 14px', fontSize: 14, lineHeight: 1.6,
+            }}>
+              {msg.role === 'assistant' ? renderMessage(msg.content) : msg.content}
+            </div>
           </div>
         ))}
         {loading && (
